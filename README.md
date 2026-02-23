@@ -4,8 +4,7 @@ Download a SKODA digital owner manual to local files (HTML, standalone HTML, and
 
 Based on [jypma/skoda-manual](https://github.com/jypma/skoda-manual), with fixes from [PR #2 (ematt)](https://github.com/jypma/skoda-manual/pull/2) plus:
 - Interactive menu mode (`./skoda.sh` with no arguments)
-- Automatic login with `USERNAME`/`PASSWORD`
-- Cookie-based login alternative (`COOKIES`)
+- Cookie-based session with automatic cookie discovery (`COOKIES` optional)
 - Resume support with caching in `./cache` and `./images`
 - PDF output support via Chromium, wkhtmltopdf, or WeasyPrint
 
@@ -37,7 +36,7 @@ cd /opt/skoda-manual
 ```
 
 The interactive menu walks through:
-1. Login (from `.env` or typed in terminal)
+1. Session cookies (auto-detect first, then manual paste fallback)
 2. Language selection
 3. Manual selection
 4. Output format (HTML / PDF / standalone variants)
@@ -76,23 +75,31 @@ Clear cache:
 
 ## Authentication
 
-Use a local `.env` file (recommended):
+By default, the script tries to auto-load cookies from:
+- `COOKIE_FILE` (Netscape cookie file)
+- common local cookie files (for example `/tmp/skoda_cookies.txt`)
+- Firefox profile cookies
+- Chromium/Chrome profile cookies (when readable)
+
+Manual override is still supported:
 
 ```bash
-USERNAME=your@email.com
-PASSWORD=your-password
+COOKIES='JSESSIONID=abc123; BIGip...=...'
 ```
 
-Or export session cookies:
+You can also pin a cookie file:
 
 ```bash
-export COOKIES='JSESSIONID=abc123; BIGip...=...'
+COOKIE_FILE=./skoda_cookies.txt
 ```
 
-If you need to copy cookies manually:
-1. Log in at [digital-manual.skoda-auto.com](https://digital-manual.skoda-auto.com)
-2. Open DevTools (`F12`) and reload
-3. Copy `Cookie:` from request headers
+If auto-discovery does not find a valid session, copy cookies manually:
+1. Open [www.skoda.dk/apps/manuals/Models](https://www.skoda.dk/apps/manuals/Models)
+2. Choose model/manual so it opens `digital-manual.skoda-auto.com`
+3. Open DevTools (`F12`) and reload
+4. Copy `Cookie:` from a request to `digital-manual.skoda-auto.com`
+
+No dedicated manual account is required for this cookie flow.
 
 ## Finding Manual ID
 
@@ -131,8 +138,7 @@ Rerun the same command to resume interrupted downloads.
 
 | Error | Cause | Fix |
 |---|---|---|
-| `ERROR: Incorrect username or password` | Invalid credentials | Verify your SKODA account login |
-| `ERROR: No login credentials found` | No auth configured in non-interactive mode | Set `USERNAME`+`PASSWORD` or `COOKIES`, or run `./skoda.sh` |
+| `ERROR: No session cookies found` | Auto-discovery found no valid browser/session cookies | Set `COOKIES` manually or set `COOKIE_FILE` |
 | `ERROR: Interactive mode requires a terminal` | Interactive mode run in non-TTY environment | Run in a real terminal, or pass flags/manual ID |
 | `ERROR: No PDF renderer found` | `--pdf` selected without renderer installed | Install Chromium, wkhtmltopdf, or WeasyPrint |
-| Missing sections or images | Session expired or interrupted run | Rerun command (resume cache), preferably with `USERNAME`+`PASSWORD` |
+| Missing sections or images | Session expired or interrupted run | Refresh `COOKIES` and rerun command (resume cache) |

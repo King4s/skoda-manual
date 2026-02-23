@@ -21,6 +21,8 @@ MAXSECT=100
 ACTIVATE_DELAY=false
 PDF_RENDERER=""
 REFERER="https://digital-manual.skoda-auto.com/"
+AUTO_COOKIE=true
+COOKIE_FILE="${COOKIE_FILE:-}"
 
 # ─── Load .env if present ─────────────────────────────────────────────────────
 if [ -f ".env" ]; then
@@ -35,6 +37,15 @@ while [[ $# -gt 0 ]]; do
         --standalone)  STANDALONE=true;    shift ;;
         --list)        LIST_MANUALS=true;  shift ;;
         --clear-cache) CLEAR_CACHE=true;   shift ;;
+        --auto-cookie) AUTO_COOKIE=true;   shift ;;
+        --no-auto-cookie) AUTO_COOKIE=false; shift ;;
+        --cookie-file)
+            if [ -z "${2:-}" ]; then
+                >&2 echo "ERROR: --cookie-file requires a path."
+                exit 1
+            fi
+            COOKIE_FILE="$2"
+            shift 2 ;;
         --help|-h)
             cat <<EOF
 Usage: $(basename "$0") [OPTIONS] [MANUAL_ID] [LANGUAGE]
@@ -47,16 +58,19 @@ Options:
   --standalone    Embed all assets in HTML (single self-contained file)
   --list          List available manuals for LANGUAGE (default: en_GB)
   --clear-cache   Delete ./cache/ and ./images/
+  --auto-cookie   Try to auto-load cookies from browser/cookie file (default)
+  --no-auto-cookie  Disable auto cookie discovery
+  --cookie-file   Read cookies from Netscape cookie file
   --help          Show this help
 
 Authentication — set in .env file or environment:
-  USERNAME        ŠKODA account email
-  PASSWORD        ŠKODA account password
-  COOKIES         Browser session cookies (alternative to username/password)
+  AUTO cookie discovery is enabled by default.
+  COOKIES         Browser session cookies (recommended)
+  COOKIE_FILE     Netscape cookie file path (optional)
 
 .env file example:
-  USERNAME=your@email.com
-  PASSWORD=your-password
+  COOKIES=JSESSIONID=...; BIGip...=...
+  COOKIE_FILE=./skoda_cookies.txt
 
 Examples:
   $(basename "$0")
@@ -123,27 +137,272 @@ fi
 
 mkdir -p ./images ./cache
 
-# ─── Authentication ───────────────────────────────────────────────────────────
-function doLogin() {
-    local JAR="./cache/session.jar"
-    >&2 echo "Logging in as ${USERNAME}..."
-    local LOCATION
-    LOCATION=$(curl -s -c "${JAR}" -D - \
-        -X POST "https://digital-manual.skoda-auto.com/public/login" \
-        -H 'Content-Type: application/x-www-form-urlencoded' \
-        -H "Referer: https://digital-manual.skoda-auto.com/public/login/${LANGUAGE}/" \
-        --data-urlencode "username=${USERNAME}" \
-        --data-urlencode "password=${PASSWORD}" \
-        -o /dev/null | grep "^Location:" | tr -d '\r')
-    if echo "${LOCATION}" | grep -q "error"; then
-        >&2 echo "ERROR: Incorrect username or password."
-        exit 1
-    fi
-    COOKIES=$(awk '!/^#/ && NF==7 {printf "%s=%s; ", $6, $7}' "${JAR}" | sed 's/; $//')
-    >&2 echo "Login successful."
+# ─── HTTP helpers ─────────────────────────────────────────────────────────────
+function normalizeCookieHeader() {
+    local RAW=$1
+    RAW="${RAW#Cookie: }"
+    RAW="${RAW#cookie: }"
+    RAW="$(echo "$RAW" | tr '\r\n' ' ' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]*;[[:space:]]*/; /g')"
+    echo "$RAW"
 }
 
-# ─── HTTP helpers ─────────────────────────────────────────────────────────────
+function testSessionCookies() {
+    local TEST_LANG="${1:-${LANGUAGE:-en_GB}}"
+    local TEST_REFERER="https://digital-manual.skoda-auto.com/w/${TEST_LANG}/"
+    local TEST_URL="https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${TEST_LANG}&page=0&pageSize=1"
+    local TMP_BODY
+    TMP_BODY="$(mktemp)"
+
+    local STATUS
+    STATUS="$(curl -sS --compressed -o "$TMP_BODY" -w '%{http_code}' \
+        -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0' \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H 'Accept-Language: en-US,en;q=0.5' \
+        -H "Referer: ${TEST_REFERER}" \
+        -H "Cookie: ${COOKIES}" \
+        "${TEST_URL}" || true)"
+
+    if [ "$STATUS" = "200" ] && jq -e '.results' "$TMP_BODY" >/dev/null 2>&1; then
+        rm -f "$TMP_BODY"
+        return 0
+    fi
+
+    rm -f "$TMP_BODY"
+    return 1
+}
+
+function cookiesFromNetscapeFile() {
+    local FILE=$1
+    [ -f "$FILE" ] || return 1
+    python3 - "$FILE" <<'PY'
+import sys
+from collections import OrderedDict
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8", errors="ignore") as f:
+    lines = f.read().splitlines()
+
+cookies = OrderedDict()
+for line in reversed(lines):
+    if not line.strip():
+        continue
+    raw = line
+    if raw.startswith("#HttpOnly_"):
+        raw = raw[len("#HttpOnly_"):]
+    elif raw.startswith("#"):
+        continue
+
+    parts = raw.split("\t")
+    if len(parts) < 7:
+        continue
+    domain, _, _, _, _, name, value = parts[:7]
+    if "digital-manual.skoda-auto.com" not in domain:
+        continue
+    if name and value and name not in cookies:
+        cookies[name] = value
+
+order = [
+    "JSESSIONID",
+    "BIGipServerP_SMBSTAP.app~P_SMBSTAP_pool",
+    "TS01e91aa3",
+    "cb-enabled",
+]
+keys = [k for k in order if k in cookies] + [k for k in cookies.keys() if k not in order]
+print("; ".join(f"{k}={cookies[k]}" for k in keys))
+PY
+}
+
+function cookiesFromFirefoxProfile() {
+    [ -d "$HOME/.mozilla/firefox" ] || return 1
+
+    while IFS= read -r DB; do
+        [ -f "$DB" ] || continue
+        local C
+C="$(python3 - "$DB" <<'PY'
+import os
+import shutil
+import sqlite3
+import sys
+import tempfile
+from collections import OrderedDict
+
+db_src = sys.argv[1]
+fd, db_tmp = tempfile.mkstemp(prefix="skoda_ff_", suffix=".sqlite")
+os.close(fd)
+try:
+    shutil.copy2(db_src, db_tmp)
+    con = sqlite3.connect(db_tmp)
+    cur = con.cursor()
+    rows = cur.execute(
+        """
+        SELECT name, value, host, lastAccessed
+        FROM moz_cookies
+        WHERE host LIKE '%digital-manual.skoda-auto.com'
+        ORDER BY lastAccessed DESC
+        """
+    ).fetchall()
+finally:
+    try:
+        con.close()
+    except Exception:
+        pass
+    try:
+        os.unlink(db_tmp)
+    except Exception:
+        pass
+
+cookies = OrderedDict()
+for name, value, host, _ in rows:
+    if not name or not value:
+        continue
+    if name not in cookies:
+        cookies[name] = value
+
+order = [
+    "JSESSIONID",
+    "BIGipServerP_SMBSTAP.app~P_SMBSTAP_pool",
+    "TS01e91aa3",
+    "cb-enabled",
+]
+keys = [k for k in order if k in cookies] + [k for k in cookies.keys() if k not in order]
+print("; ".join(f"{k}={cookies[k]}" for k in keys))
+PY
+)" || true
+        C="${C:-}"
+        C="$(normalizeCookieHeader "$C")"
+        if [ -n "$C" ]; then
+            echo "$C"
+            return 0
+        fi
+    done < <(find "$HOME/.mozilla/firefox" -maxdepth 3 -type f -name "cookies.sqlite" 2>/dev/null | sort -r)
+
+    return 1
+}
+
+function cookiesFromChromiumProfile() {
+    local ROOT
+    for ROOT in "$HOME/.config/google-chrome" "$HOME/.config/chromium" "$HOME/.config/BraveSoftware/Brave-Browser"; do
+        [ -d "$ROOT" ] || continue
+        while IFS= read -r DB; do
+            [ -f "$DB" ] || continue
+            local C
+            C="$(python3 - "$DB" <<'PY'
+import os
+import shutil
+import sqlite3
+import sys
+import tempfile
+from collections import OrderedDict
+
+db_src = sys.argv[1]
+fd, db_tmp = tempfile.mkstemp(prefix="skoda_ch_", suffix=".sqlite")
+os.close(fd)
+try:
+    shutil.copy2(db_src, db_tmp)
+    con = sqlite3.connect(db_tmp)
+    cur = con.cursor()
+    rows = cur.execute(
+        """
+        SELECT name, value, host_key, last_access_utc
+        FROM cookies
+        WHERE host_key LIKE '%digital-manual.skoda-auto.com%'
+        ORDER BY last_access_utc DESC
+        """
+    ).fetchall()
+finally:
+    try:
+        con.close()
+    except Exception:
+        pass
+    try:
+        os.unlink(db_tmp)
+    except Exception:
+        pass
+
+cookies = OrderedDict()
+for name, value, host, _ in rows:
+    if not name or not value:
+        continue
+    if name not in cookies:
+        cookies[name] = value
+
+order = [
+    "JSESSIONID",
+    "BIGipServerP_SMBSTAP.app~P_SMBSTAP_pool",
+    "TS01e91aa3",
+    "cb-enabled",
+]
+keys = [k for k in order if k in cookies] + [k for k in cookies.keys() if k not in order]
+print("; ".join(f"{k}={cookies[k]}" for k in keys))
+PY
+)" || true
+            C="${C:-}"
+            C="$(normalizeCookieHeader "$C")"
+            if [ -n "$C" ]; then
+                echo "$C"
+                return 0
+            fi
+        done < <(find "$ROOT" -maxdepth 3 -type f -name "Cookies" 2>/dev/null | sort -r)
+    done
+
+    return 1
+}
+
+function tryCookieCandidate() {
+    local SOURCE=$1
+    local CANDIDATE=$2
+
+    CANDIDATE="$(normalizeCookieHeader "$CANDIDATE")"
+    [ -n "$CANDIDATE" ] || return 1
+
+    COOKIES="$CANDIDATE"
+    if testSessionCookies "$LANGUAGE"; then
+        >&2 echo "Auto cookie source: ${SOURCE}"
+        return 0
+    fi
+
+    COOKIES=""
+    return 1
+}
+
+function autoLoadCookies() {
+    [ -n "$COOKIES" ] && return 0
+    $AUTO_COOKIE || return 1
+
+    >&2 echo "Trying automatic cookie discovery..."
+
+    local CANDIDATE
+
+    if [ -n "$COOKIE_FILE" ] && [ -f "$COOKIE_FILE" ]; then
+        CANDIDATE="$(cookiesFromNetscapeFile "$COOKIE_FILE" 2>/dev/null || true)"
+        if tryCookieCandidate "cookie file: ${COOKIE_FILE}" "$CANDIDATE"; then
+            return 0
+        fi
+    fi
+
+    local AUTO_COOKIE_FILES=("./skoda_cookies.txt" "/tmp/skoda_cookies.txt" "/tmp/skoda_c.txt" "../../tmp/skoda_cookies.txt" "../../tmp/skoda_c.txt")
+    local FILE
+    for FILE in "${AUTO_COOKIE_FILES[@]}"; do
+        [ -f "$FILE" ] || continue
+        CANDIDATE="$(cookiesFromNetscapeFile "$FILE" 2>/dev/null || true)"
+        if tryCookieCandidate "cookie file: ${FILE}" "$CANDIDATE"; then
+            return 0
+        fi
+    done
+
+    CANDIDATE="$(cookiesFromFirefoxProfile 2>/dev/null || true)"
+    if tryCookieCandidate "Firefox profile" "$CANDIDATE"; then
+        return 0
+    fi
+
+    CANDIDATE="$(cookiesFromChromiumProfile 2>/dev/null || true)"
+    if tryCookieCandidate "Chromium profile" "$CANDIDATE"; then
+        return 0
+    fi
+
+    return 1
+}
+
 function fetchFile() {
     local URL=$1
     local DESTINATION=$2
@@ -177,12 +436,8 @@ function fetchFile() {
     if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
         rm -f "${DESTINATION}"
         >&2 echo "Session expired."
-        if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
-            doLogin
-        else
-            >&2 echo "WARNING: Cannot re-login automatically. Set USERNAME+PASSWORD for auto re-login."
-            sleep $(shuf -i 1-5 -n 1)
-        fi
+        >&2 echo "WARNING: Refresh COOKIES and rerun."
+        sleep $(shuf -i 1-5 -n 1)
         fetchFile "$URL" "${DESTINATION}" $(( RETRY + 1 ))
     fi
 }
@@ -229,9 +484,7 @@ function grabImage() {
     if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
         rm -f "${DESTINATION}"
         >&2 echo "Session expired (image)."
-        if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then doLogin
-        else sleep $(shuf -i 1-5 -n 1)
-        fi
+        sleep $(shuf -i 1-5 -n 1)
         grabImage "$IMG" "$DEST_PATH" $(( RETRY + 1 ))
     fi
 }
@@ -512,25 +765,33 @@ function interactiveMode() {
     echo "║          ŠKODA Manual Downloader                 ║"
     echo "╚══════════════════════════════════════════════════╝"
 
-    # ── Step 1: Login ──────────────────────────────────────────────────────────
+    # ── Step 1: Session ────────────────────────────────────────────────────────
     echo ""
-    echo "Step 1/4 — Login"
+    echo "Step 1/4 — Session"
 
     if [ -n "$COOKIES" ]; then
         echo "  Using existing session cookies."
     else
-        if [ -n "$USERNAME" ]; then
-            echo "  Email:    ${USERNAME}  (from .env)"
-        else
-            read -r -p "  Email:    " USERNAME
+        if $AUTO_COOKIE; then
+            if autoLoadCookies; then
+                echo "  Session cookies loaded automatically."
+            fi
         fi
-        if [ -n "$PASSWORD" ]; then
-            echo "  Password: ●●●●●●●●  (from .env)"
-        else
-            read -r -s -p "  Password: " PASSWORD
-            echo ""
+
+        if [ -z "$COOKIES" ]; then
+            echo "  Paste browser cookies from digital-manual.skoda-auto.com."
+            read -r -p "  Cookies:  " COOKIES
+            COOKIES="$(normalizeCookieHeader "$COOKIES")"
         fi
-        doLogin
+
+        if [ -n "$COOKIES" ]; then
+            echo "  Cookies set."
+        else
+            >&2 echo "ERROR: No session cookies provided."
+            >&2 echo "Open https://www.skoda.dk/apps/manuals/Models and open your manual."
+            >&2 echo "Then copy the Cookie header from a request to digital-manual.skoda-auto.com."
+            exit 1
+        fi
     fi
 
     # ── Step 2: Language ───────────────────────────────────────────────────────
@@ -670,19 +931,20 @@ if $INTERACTIVE; then
     interactiveMode
 else
     # Non-interactive: authenticate
+    if [ -z "$COOKIES" ] && $AUTO_COOKIE; then
+        autoLoadCookies || true
+    fi
+
     if [ -z "$COOKIES" ]; then
-        if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
-            doLogin
-        else
-            >&2 echo "ERROR: No login credentials found."
-            >&2 echo ""
-            >&2 echo "Tip — create a .env file:"
-            >&2 echo "  echo 'USERNAME=your@email.com' >> .env"
-            >&2 echo "  echo 'PASSWORD=your-password'  >> .env"
-            >&2 echo ""
-            >&2 echo "Or run without flags for interactive mode: $(basename "$0")"
-            exit 1
-        fi
+        >&2 echo "ERROR: No session cookies found."
+        >&2 echo ""
+        >&2 echo "Set COOKIES in .env or environment:"
+        >&2 echo "  echo \"COOKIES='JSESSIONID=...; BIGip...=...'\" >> .env"
+        >&2 echo "Or set COOKIE_FILE in .env:"
+        >&2 echo "  echo \"COOKIE_FILE=./skoda_cookies.txt\" >> .env"
+        >&2 echo ""
+        >&2 echo "Or run without flags for interactive mode: $(basename "$0")"
+        exit 1
     fi
 
     # Set REFERER now that MANUAL and LANGUAGE are known
