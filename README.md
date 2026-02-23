@@ -1,81 +1,134 @@
 # skoda-manual
 
-Downloads a ŠKODA digital owner's manual as a single self-contained HTML file with local images.
+Download a SKODA digital owner manual to local files (HTML, standalone HTML, and/or PDF).
 
-Based on [jypma/skoda-manual](https://github.com/jypma/skoda-manual), with fixes from [PR #2 (ematt)](https://github.com/jypma/skoda-manual/pull/2) and additional improvements:
-- Automatic login with username/password (no manual cookie copying needed)
-- `set +H` fix for bash history expansion
-- Caching of all downloaded content for resumable runs
-- Correct handling of the current image URL format
+Based on [jypma/skoda-manual](https://github.com/jypma/skoda-manual), with fixes from [PR #2 (ematt)](https://github.com/jypma/skoda-manual/pull/2) plus:
+- Interactive menu mode (`./skoda.sh` with no arguments)
+- Automatic login with `USERNAME`/`PASSWORD`
+- Cookie-based login alternative (`COOKIES`)
+- Resume support with caching in `./cache` and `./images`
+- PDF output support via Chromium, wkhtmltopdf, or WeasyPrint
 
 ## Requirements
 
+Required:
+
 ```bash
-sudo apt install curl jq libxml2-utils
+sudo apt install curl jq libxml2-utils coreutils python3
 ```
 
-## Usage
+Optional for PDF output:
 
-### Option 1 — Automatic login (recommended)
+```bash
+sudo apt install chromium
+# or
+sudo apt install wkhtmltopdf
+# or
+pip install weasyprint
+```
+
+## Quick Start (Interactive)
+
+Run without arguments:
 
 ```bash
 cd /opt/skoda-manual
-
-export USERNAME='your@email.com'
-export PASSWORD='your-password'
-
-./skoda.sh <MANUAL_ID> <LANGUAGE> > manual.html
+./skoda.sh
 ```
 
-Example for a Danish manual:
+The interactive menu walks through:
+1. Login (from `.env` or typed in terminal)
+2. Language selection
+3. Manual selection
+4. Output format (HTML / PDF / standalone variants)
+
+## Non-interactive Usage
+
+List manuals for a language:
 
 ```bash
-./skoda.sh b6c0b6d20c1b2988ac1445253a0f2c00_3_da_DK da_DK > manual.html
+./skoda.sh --list da_DK
 ```
 
-### Option 2 — Manual cookie
+Download a manual as HTML:
 
-If automatic login does not work, you can copy cookies from your browser.
+```bash
+./skoda.sh <MANUAL_ID> <LANGUAGE> --html
+```
 
-1. Go to [digital-manual.skoda-auto.com](https://digital-manual.skoda-auto.com) and log in
-2. Open DevTools (`F12`) → **Network** tab → reload the page
-3. Click any request to the site → **Request Headers** → copy the `Cookie:` value
+Download HTML + PDF:
+
+```bash
+./skoda.sh <MANUAL_ID> <LANGUAGE> --html --pdf
+```
+
+Download standalone HTML (single file with embedded assets):
+
+```bash
+./skoda.sh <MANUAL_ID> <LANGUAGE> --standalone
+```
+
+Clear cache:
+
+```bash
+./skoda.sh --clear-cache
+```
+
+## Authentication
+
+Use a local `.env` file (recommended):
+
+```bash
+USERNAME=your@email.com
+PASSWORD=your-password
+```
+
+Or export session cookies:
 
 ```bash
 export COOKIES='JSESSIONID=abc123; BIGip...=...'
-./skoda.sh b6c0b6d20c1b2988ac1445253a0f2c00_3_da_DK da_DK > manual.html
 ```
 
-## Finding your manual ID
+If you need to copy cookies manually:
+1. Log in at [digital-manual.skoda-auto.com](https://digital-manual.skoda-auto.com)
+2. Open DevTools (`F12`) and reload
+3. Copy `Cookie:` from request headers
 
-The manual ID is in the URL when you browse the manual online:
+## Finding Manual ID
 
-```
+The manual ID is in the manual URL:
+
+```text
 https://digital-manual.skoda-auto.com/w/da_DK/show/b6c0b6d20c1b2988ac1445253a0f2c00_3_da_DK
                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                                                    This is your manual ID
 ```
 
-## Resuming an interrupted download
+## Output Files
 
-All fetched content is cached in `./cache/` and images in `./images/`. Re-running the script skips already-downloaded files automatically.
+The script writes output files directly in the working directory:
+- `manual.html` when HTML is selected
+- `manual-standalone.html` when `--standalone` is selected
+- `manual.pdf` when `--pdf` is selected
 
-## Output
+For non-standalone HTML, keep these next to `manual.html`:
+- `extra.css`
+- `bootstrap.css`
+- `images/`
 
-The script outputs HTML to stdout and progress messages to stderr, so redirect appropriately:
+## Resume Behavior
 
-```bash
-./skoda.sh <MANUAL_ID> <LANGUAGE> > manual.html          # HTML to file, progress to terminal
-./skoda.sh <MANUAL_ID> <LANGUAGE> > manual.html 2>log.txt  # both to files
-```
+Downloaded content is cached in:
+- `./cache` (JSON/session data)
+- `./images` (manual images)
 
-The generated `manual.html` requires `extra.css`, `bootstrap.css`, and the `images/` folder to be in the same directory.
+Rerun the same command to resume interrupted downloads.
 
 ## Troubleshooting
 
 | Error | Cause | Fix |
 |---|---|---|
-| `ERROR: Incorrect username or password` | Wrong credentials | Check your ŠKODA ID login |
-| `ERROR: No login credentials found` | No env vars set | Set `USERNAME`+`PASSWORD` or `COOKIES` |
-| Empty sections / missing content | Session expired | Log in again (re-run with credentials) |
-| Missing images | Download interrupted | Re-run the script — it resumes automatically |
+| `ERROR: Incorrect username or password` | Invalid credentials | Verify your SKODA account login |
+| `ERROR: No login credentials found` | No auth configured in non-interactive mode | Set `USERNAME`+`PASSWORD` or `COOKIES`, or run `./skoda.sh` |
+| `ERROR: Interactive mode requires a terminal` | Interactive mode run in non-TTY environment | Run in a real terminal, or pass flags/manual ID |
+| `ERROR: No PDF renderer found` | `--pdf` selected without renderer installed | Install Chromium, wkhtmltopdf, or WeasyPrint |
+| Missing sections or images | Session expired or interrupted run | Rerun command (resume cache), preferably with `USERNAME`+`PASSWORD` |
