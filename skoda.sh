@@ -7,9 +7,20 @@ LANGUAGE=${2:-en_GB}
 REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/show/${MANUAL}?ct=${MANUAL}"
 TOC_CONTENT=""
 TOC=true
+CURRENT_SECTION=0
+TOTAL_SECTIONS=0
 
 mkdir -p ./images
 mkdir -p ./cache
+
+# Check required dependencies
+for cmd in curl jq xmllint shuf base64; do
+    if ! command -v "$cmd" &>/dev/null; then
+        >&2 echo "ERROR: Required command not found: $cmd"
+        >&2 echo "Install with: sudo apt install curl jq libxml2-utils coreutils"
+        exit 1
+    fi
+done
 
 function doLogin() {
     local JAR="./cache/session.jar"
@@ -51,13 +62,20 @@ fi
 MAXSECT=100
 ACTIVATE_DELAY=false
 
-function fecthFile() {
+function fetchFile() {
     local URL=$1
     local DESTINATION=$2
+    local RETRY=${3:-0}
+
+    if [ "${RETRY}" -ge 5 ]; then
+        >&2 echo "ERROR: Failed to fetch ${DESTINATION} after 5 retries. Aborting."
+        exit 1
+    fi
+
     if [ ! -s "${DESTINATION}" ]; then
-        >&2 echo "Fetching ${DESTINATION} from ${URL}"
-        rm "${DESTINATION}" 2> /dev/null
-        curl "${URL}" --retry 100 --retry-all-errors --compressed \
+        >&2 echo "Fetching ${DESTINATION}"
+        rm -f "${DESTINATION}"
+        curl "${URL}" --retry 10 --retry-all-errors --compressed \
             -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0' \
             -H 'Accept: application/json, text/plain, */*' \
             -H 'Accept-Language: en-US,en;q=0.5' \
@@ -69,60 +87,87 @@ function fecthFile() {
             -H 'Sec-Fetch-Mode: cors' \
             -H 'Sec-Fetch-Site: same-origin' \
             > "${DESTINATION}"
-
         ACTIVATE_DELAY=true
-        if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}"; then
-            rm "${DESTINATION}" 2> /dev/null
-            sleep $(shuf -i 1-5 -n 1)
-            fecthFile $URL "${DESTINATION}"
-        fi
     else
-        if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}"; then
-            rm "${DESTINATION}" 2> /dev/null
-            sleep $(shuf -i 1-5 -n 1)
-            fecthFile $URL "${DESTINATION}"
+        >&2 echo "  [cache] ${DESTINATION}"
+    fi
+
+    if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
+        rm -f "${DESTINATION}"
+        >&2 echo "Session expired."
+        if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
+            doLogin
         else
-            >&2 echo "Fetching ${DESTINATION} from cache"
+            >&2 echo "WARNING: Cannot re-login automatically. Set USERNAME+PASSWORD for auto re-login."
+            sleep $(shuf -i 1-5 -n 1)
         fi
+        fetchFile "$URL" "${DESTINATION}" $(( RETRY + 1 ))
     fi
 }
 
 function grabImage() {
     local IMG=$1
     local DEST_PATH=$2
-    local DESTINATION=$DEST_PATH/$IMG
+    local RETRY=${3:-0}
 
-    if [ ! -s "${DESTINATION}" ]; then
-        local URL="https://digital-manual.skoda-auto.com/public/media?lang=${LANGUAGE}&key=${IMG}"
-        >&2 echo "Fetching image ${DESTINATION}"
-        rm "${DESTINATION}" 2> /dev/null
-        curl "${URL}" --retry 100 --retry-all-errors \
-            -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0' \
-            -H 'Accept: image/avif,image/webp,*/*' \
-            -H 'Accept-Language: en-US,en;q=0.5' \
-            -H "Referer: $REFERER" \
-            -H "Cookie: $COOKIES" \
-            -H 'Sec-Fetch-Dest: image' \
-            -H 'Sec-Fetch-Mode: no-cors' \
-            -H 'Sec-Fetch-Site: same-origin' \
-            -H 'Pragma: no-cache' \
-            -H 'Cache-Control: no-cache' \
-            > "${DESTINATION}"
+    if [ -z "${IMG}" ] || [ "${IMG}" = "null" ]; then
+        return 0
+    fi
 
-        ACTIVATE_DELAY=true
-        if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}"; then
-            rm "${DESTINATION}" 2> /dev/null
-            sleep $(shuf -i 1-5 -n 1)
-            grabImage $IMG $DEST_PATH
-        fi
-    else
-        if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}"; then
-            rm "${DESTINATION}" 2> /dev/null
-            sleep $(shuf -i 1-5 -n 1)
-            grabImage $IMG $DEST_PATH
+    if [ "${RETRY}" -ge 5 ]; then
+        >&2 echo "WARNING: Failed to fetch image ${IMG} after 5 retries. Skipping."
+        return 0
+    fi
+
+    local DESTINATION="${DEST_PATH}/${IMG}"
+
+    if [ -s "${DESTINATION}" ]; then
+        if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
+            rm -f "${DESTINATION}"
         else
-            >&2 echo "Fetching image ${DESTINATION} from cache"
+            >&2 echo "  [cache] image: ${IMG}"
+            return 0
         fi
+    fi
+
+    >&2 echo "  Fetching image: ${IMG}"
+    rm -f "${DESTINATION}"
+    curl "https://digital-manual.skoda-auto.com/public/media?lang=${LANGUAGE}&key=${IMG}" \
+        --retry 10 --retry-all-errors \
+        -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0' \
+        -H 'Accept: image/avif,image/webp,*/*' \
+        -H 'Accept-Language: en-US,en;q=0.5' \
+        -H "Referer: $REFERER" \
+        -H "Cookie: $COOKIES" \
+        -H 'Sec-Fetch-Dest: image' \
+        -H 'Sec-Fetch-Mode: no-cors' \
+        -H 'Sec-Fetch-Site: same-origin' \
+        -H 'Pragma: no-cache' \
+        -H 'Cache-Control: no-cache' \
+        > "${DESTINATION}"
+    ACTIVATE_DELAY=true
+
+    if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
+        rm -f "${DESTINATION}"
+        >&2 echo "Session expired while fetching image."
+        if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
+            doLogin
+        else
+            sleep $(shuf -i 1-5 -n 1)
+        fi
+        grabImage "$IMG" "$DEST_PATH" $(( RETRY + 1 ))
+    fi
+}
+
+# Returns a safe HTML id for a section: prefer the linkTarget, fall back to
+# a URL-safe base64 encoding of the label (no line wraps, no +/= chars).
+function sectionId() {
+    local LINK=$1
+    local LABEL=$2
+    if [ -n "$LINK" ] && [ "$LINK" != "null" ]; then
+        echo "$LINK"
+    else
+        echo "$LABEL" | base64 -w 0 | tr '+/=' '-_~'
     fi
 }
 
@@ -130,26 +175,32 @@ function handleSectionContent2Html() {
     local JSONPATH=$1
     local HTMLPATH=$2
 
-    local HTMLBODY="$(cat "${JSONPATH}" | jq -r ".bodyHtml")"
-    local LINK_STATE_KEYS="$(cat "${JSONPATH}" | jq -r ".linkState | keys[]")"
+    local HTMLBODY
+    HTMLBODY="$(cat "${JSONPATH}" | jq -r ".bodyHtml")"
+    local LINK_STATE_KEYS
+    LINK_STATE_KEYS="$(cat "${JSONPATH}" | jq -r ".linkState | keys[]")"
 
     for KEY in ${LINK_STATE_KEYS[@]}; do
-        >&2 echo "Replacing link for ${KEY}"
+        >&2 echo "  Replacing link: ${KEY}"
 
-        local ANCHOR_TO_REPLACE="$(echo $HTMLBODY | xmllint --xpath "//html//a[@id='"${KEY}"']" -)"
+        local ANCHOR_TO_REPLACE
+        ANCHOR_TO_REPLACE="$(echo "$HTMLBODY" | xmllint --xpath "//html//a[@id='"${KEY}"']" -)"
 
-        local LINK_TYPE="$(cat "${JSONPATH}" | jq -r ".linkState[] | select(.id==\"${KEY}\") | .linkType")"
-        if [ $LINK_TYPE == "dynamic" ]; then
-            local TARGET="$(cat "${JSONPATH}" | jq -r ".linkState[] | select(.id==\"${KEY}\") | .target")"
-            local ANCHOR_MODIFIED="$(echo $ANCHOR_TO_REPLACE | sed 's|href="#"|href="#'"${TARGET}"'"|g')"
+        local LINK_TYPE
+        LINK_TYPE="$(cat "${JSONPATH}" | jq -r ".linkState[] | select(.id==\"${KEY}\") | .linkType")"
+        local ANCHOR_MODIFIED
+        if [ "$LINK_TYPE" == "dynamic" ]; then
+            local TARGET
+            TARGET="$(cat "${JSONPATH}" | jq -r ".linkState[] | select(.id==\"${KEY}\") | .target")"
+            ANCHOR_MODIFIED="$(echo "$ANCHOR_TO_REPLACE" | sed 's|href="#"|href="#'"${TARGET}"'"|g')"
         else
-            local ANCHOR_MODIFIED="$(echo $ANCHOR_TO_REPLACE | sed -E 's|href=\"([^.]*)\.html#([^\"]*)\"|href=\"#\1\"|')"
+            ANCHOR_MODIFIED="$(echo "$ANCHOR_TO_REPLACE" | sed -E 's|href=\"([^.]*)\.html#([^\"]*)\"|href=\"#\1\"|')"
         fi
-        HTMLBODY="$(echo "${HTMLBODY/"$ANCHOR_TO_REPLACE"/"$ANCHOR_MODIFIED"}")"
+        HTMLBODY="${HTMLBODY/"$ANCHOR_TO_REPLACE"/"$ANCHOR_MODIFIED"}"
     done
 
-    echo $HTMLBODY > "${HTMLPATH}"
-    echo $HTMLBODY \
+    echo "$HTMLBODY" > "${HTMLPATH}"
+    echo "$HTMLBODY" \
         | sed 's|<?[-A-Za-z0-9 "=\.]*?>||g' \
         | sed 's|<!DOCTYPE.*||g' \
         | sed 's|^  PUBLIC ".*||g' \
@@ -159,19 +210,17 @@ function handleSectionContent2Html() {
 }
 
 function handleSection() {
-    local TOCPATH=$1
-    local CURRENTPATH=$2
-    local EXPR=$3
-    local LABEL="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.label" | sed 's|<[^>]*>||g' | sed 's|\/|, |g')"
-    local CHILDREN="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.children | length")"
-    local LINK=$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.linkTarget")
-    >&2 echo "$EXPR : $LABEL (${CHILDREN} children)"
+    local CURRENTPATH=$1
+    local EXPR=$2
+    local LABEL
+    LABEL="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.label" | sed 's|<[^>]*>||g' | sed 's|\/|, |g')"
+    local CHILDREN
+    CHILDREN="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.children | length")"
+    local LINK
+    LINK=$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.linkTarget")
+
     local ID
-    if [ -n "$LINK" ] && [ "$LINK" != "null" ]; then
-        ID="$LINK"
-    else
-        ID=$(echo "$LABEL" | base64)
-    fi
+    ID=$(sectionId "$LINK" "$LABEL")
 
     if [ -n "$ID" ] && [ "$ID" != "null" ]; then
         echo "<div class='section' id='${ID}'>"
@@ -184,14 +233,17 @@ function handleSection() {
     mkdir -p "${WORKINGPATH}"
 
     if [ -n "$LINK" ] && [ "$LINK" != "null" ]; then
+        CURRENT_SECTION=$(( CURRENT_SECTION + 1 ))
+        >&2 echo "[${CURRENT_SECTION}/${TOTAL_SECTIONS}] ${LABEL}"
+
         local CURRENT_PAGE_JSON="${WORKINGPATH}/${LABEL}.json"
         local CURRENT_PAGE_HTML="${CURRENT_PAGE_JSON}.html"
 
-        fecthFile "https://digital-manual.skoda-auto.com/api/vw-topic/V1/topic?key=${LINK}&displaytype=desktop&language=${LANGUAGE}" "${CURRENT_PAGE_JSON}"
+        fetchFile "https://digital-manual.skoda-auto.com/api/vw-topic/V1/topic?key=${LINK}&displaytype=desktop&language=${LANGUAGE}" "${CURRENT_PAGE_JSON}"
         handleSectionContent2Html "${CURRENT_PAGE_JSON}" "${CURRENT_PAGE_HTML}"
 
         while read IMG; do
-            grabImage $IMG "./images"
+            grabImage "$IMG" "./images"
         done < <(xmllint --xpath "//html//img/@data-src" "${CURRENT_PAGE_HTML}" 2>/dev/null \
             | sed 's/ data-src="https:\/\/digital-manual.skoda-auto.com\/default\/public\/media?lang='"${LANGUAGE}"'&amp;key=\(.*\)"/\1/g' \
             | sed 's/&amp;/\&/g')
@@ -202,53 +254,45 @@ function handleSection() {
     TOP=$(( CHILDREN > MAXSECT ? MAXSECT : CHILDREN ))
     for ((i=0;i<TOP;i++)); do
         if [ "$ACTIVATE_DELAY" = true ]; then
-            >&2 echo "Waiting before next section: $EXPR : $LABEL"
+            >&2 echo "Pausing before next section..."
             sleep $(shuf -i 5-15 -n 1)
             ACTIVATE_DELAY=false
         fi
-
-        handleSection $TOCPATH "${WORKINGPATH}" "$EXPR.children[${i}]"
+        handleSection "${WORKINGPATH}" "$EXPR.children[${i}]"
     done
 
     echo "</div>"
 }
 
 function handleTocItem() {
-    local TOCPATH=$1
-    local EXPR=$2
-    local PREFIX=$3
-    local LABEL="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.label" | sed 's|<[^>]*>||g' | sed 's|\/|, |g')"
-    local CHILDREN="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.children | length")"
-    local LINK=$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.linkTarget")
+    local EXPR=$1
+    local LABEL
+    LABEL="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.label" | sed 's|<[^>]*>||g' | sed 's|\/|, |g')"
+    local CHILDREN
+    CHILDREN="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.children | length")"
+    local LINK
+    LINK=$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.linkTarget")
     local ID
-    if [ -n "$LINK" ] && [ "$LINK" != "null" ]; then
-        ID="$LINK"
-    else
-        ID=$(echo "$LABEL" | base64)
-    fi
+    ID=$(sectionId "$LINK" "$LABEL")
 
     echo "<li><a href='#${ID}'>${LABEL^}</a>"
-
     local i
     local TOP
     TOP=$(( CHILDREN > MAXSECT ? MAXSECT : CHILDREN ))
-    if $TOC; then
-        echo '<ol>'
-    fi
+    echo '<ol>'
     for ((i=0;i<TOP;i++)); do
-        handleTocItem $TOCPATH "$EXPR.children[${i}]" "${PREFIX}.$((i+1))"
+        handleTocItem "$EXPR.children[${i}]"
     done
-    if $TOC; then
-        echo '</ol>'
-    fi
+    echo '</ol>'
+    echo '</li>'
 }
 
 function handleToc() {
-    local TOCPATH=$1
-    local EXPR=$2
-    local PREFIX=$3
-    local LABEL="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.label" | sed 's|<[^>]*>||g' | sed 's|\/|, |g')"
-    local CHILDREN="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.children | length")"
+    local EXPR=$1
+    local LABEL
+    LABEL="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.label" | sed 's|<[^>]*>||g' | sed 's|\/|, |g')"
+    local CHILDREN
+    CHILDREN="$(echo "${TOC_CONTENT}" | jq -r "${EXPR}.children | length")"
 
     local i
     local TOP
@@ -258,10 +302,9 @@ function handleToc() {
 
     echo '<nav id="toc" aria-labelledby="toc-label">'
     echo "<h2 id=\"toc-label\">${LABEL}</h2>"
-
     echo '<ol>'
     for ((i=0;i<TOP;i++)); do
-        handleTocItem $TOCPATH "$EXPR.children[${i}]" "${PREFIX}.$((i+1))"
+        handleTocItem "$EXPR.children[${i}]"
     done
     echo '</ol>'
     echo '</nav>'
@@ -270,9 +313,12 @@ function handleToc() {
 function handleCover() {
     local MANUAL_LIST_PATH=$1
 
-    local COVER_IMAGE="$(cat "${MANUAL_LIST_PATH}" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .previewImage")"
-    local COVER_ABSTRACT="$(cat "${MANUAL_LIST_PATH}" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .abstractText")"
-    local COVER_PART="$(cat "${MANUAL_LIST_PATH}" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .facets[0].\"1\"[0]")"
+    local COVER_IMAGE
+    COVER_IMAGE="$(cat "${MANUAL_LIST_PATH}" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .previewImage")"
+    local COVER_ABSTRACT
+    COVER_ABSTRACT="$(cat "${MANUAL_LIST_PATH}" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .abstractText")"
+    local COVER_PART
+    COVER_PART="$(cat "${MANUAL_LIST_PATH}" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .facets[0].\"1\"[0]")"
 
     echo '<div class="panel panel-default">'
     echo '<div class="panel-heading">'
@@ -288,22 +334,25 @@ function handleCover() {
 >&2 echo "Fetching table of contents for manual: ${MANUAL} (${LANGUAGE})..."
 
 TOPIC_PATH=./cache/topic.json
-fecthFile "https://digital-manual.skoda-auto.com/api/web/V6/topic?key=${MANUAL}&displaytype=topic&language=${LANGUAGE}&query=undefined" $TOPIC_PATH
+fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/topic?key=${MANUAL}&displaytype=topic&language=${LANGUAGE}&query=undefined" "$TOPIC_PATH"
 
 >&2 echo "Fetching manual list..."
 MANUAL_LIST_PATH=./cache/manual_list.json
-fecthFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=20" $MANUAL_LIST_PATH
+fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "$MANUAL_LIST_PATH"
 
 >&2 echo "Fetching cover image..."
-grabImage "$(cat ./cache/manual_list.json | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .previewImage")" "./images"
+grabImage "$(cat "$MANUAL_LIST_PATH" | jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .previewImage")" "./images"
 
 TOC_PATH=./cache/toc.json
-if [ ! -s $TOC_PATH ]; then
-    cat $TOPIC_PATH | jq .trees > ${TOC_PATH}
+if [ ! -s "$TOC_PATH" ]; then
+    cat "$TOPIC_PATH" | jq .trees > "$TOC_PATH"
 fi
-TOC_CONTENT=$(cat $TOC_PATH)
+TOC_CONTENT=$(cat "$TOC_PATH")
 
-TITLE=$(cat "${TOC_PATH}" | jq -r ".[0].label")
+TOTAL_SECTIONS=$(echo "${TOC_CONTENT}" | jq '[.. | objects | .linkTarget | select(type == "string" and . != "null")] | length')
+>&2 echo "Manual contains ${TOTAL_SECTIONS} sections."
+
+TITLE=$(cat "$TOC_PATH" | jq -r ".[0].label")
 
 echo "<!DOCTYPE html>"
 echo "<html lang=\"${LANGUAGE}\">"
@@ -316,9 +365,8 @@ echo '<link href="extra.css" rel="stylesheet" type="text/css"/>'
 echo '<link href="bootstrap.css" rel="stylesheet" type="text/css"/>'
 echo '</head>'
 echo '<body>'
-handleCover $MANUAL_LIST_PATH
-handleToc $TOC_PATH ".[0]" ""
-handleSection $TOC_PATH "./cache" ".[0]"
-echo '</div>'
+handleCover "$MANUAL_LIST_PATH"
+handleToc ".[0]"
+handleSection "./cache" ".[0]"
 echo "</body>"
 echo "</html>"
