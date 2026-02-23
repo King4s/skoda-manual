@@ -464,6 +464,13 @@ function makePdf() {
     >&2 echo "PDF written ($(du -sh "$ABS_PDF" | cut -f1))"
 }
 
+function sanitizeFileComponent() {
+    local RAW=$1
+    RAW="$(echo "$RAW" | tr '\r\n\t' '   ' | sed -E 's/[\/\\:*?"<>|]+/-/g; s/[[:space:]]+/ /g; s/^ +//; s/ +$//')"
+    [ -z "$RAW" ] && RAW="manual"
+    echo "$RAW"
+}
+
 function generateHtml() {
     local MANUAL_LIST_PATH=$1
     echo "<!DOCTYPE html>"
@@ -733,26 +740,42 @@ TOTAL_SECTIONS=$(echo "${TOC_CONTENT}" | jq '[.. | objects | .linkTarget | selec
 TITLE=$(jq -r ".[0].label" "$TOC_PATH")
 >&2 echo "Manual: ${TITLE} — ${TOTAL_SECTIONS} sections"
 
+# ─── Output filenames ─────────────────────────────────────────────────────────
+MANUAL_NAME_RAW="$(jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .abstractText" "$MANUAL_LIST_PATH" | head -n 1)"
+if [ -z "$MANUAL_NAME_RAW" ] || [ "$MANUAL_NAME_RAW" = "null" ]; then
+    MANUAL_NAME_RAW="$TITLE"
+fi
+if [ -z "$MANUAL_NAME_RAW" ] || [ "$MANUAL_NAME_RAW" = "null" ]; then
+    MANUAL_NAME_RAW="$MANUAL"
+fi
+MANUAL_NAME="$(sanitizeFileComponent "$MANUAL_NAME_RAW")"
+OUTPUT_TIMESTAMP="$(date '+%d-%m-%Y %H-%M-%S')"
+OUTPUT_BASE="${MANUAL_NAME} (${LANGUAGE}) (${OUTPUT_TIMESTAMP})"
+OUTPUT_HTML="./${OUTPUT_BASE}.html"
+OUTPUT_STANDALONE="./${OUTPUT_BASE} (standalone).html"
+OUTPUT_PDF="./${OUTPUT_BASE}.pdf"
+>&2 echo "Output base: ${OUTPUT_BASE}"
+
 # ─── Generate HTML ────────────────────────────────────────────────────────────
 >&2 echo "Generating HTML..."
-generateHtml "$MANUAL_LIST_PATH" > ./manual.html
->&2 echo "HTML written ($(du -sh ./manual.html | cut -f1))"
+generateHtml "$MANUAL_LIST_PATH" > "$OUTPUT_HTML"
+>&2 echo "HTML written ($(du -sh "$OUTPUT_HTML" | cut -f1))"
 
 # ─── Standalone ───────────────────────────────────────────────────────────────
 if $STANDALONE; then
-    makeStandalone "./manual.html" "./manual-standalone.html"
+    makeStandalone "$OUTPUT_HTML" "$OUTPUT_STANDALONE"
 fi
 
 # ─── PDF ──────────────────────────────────────────────────────────────────────
 if $DO_PDF; then
-    PDF_SRC="./manual.html"
-    $STANDALONE && [ -f "./manual-standalone.html" ] && PDF_SRC="./manual-standalone.html"
-    makePdf "$PDF_SRC" "./manual.pdf"
+    PDF_SRC="$OUTPUT_HTML"
+    $STANDALONE && [ -f "$OUTPUT_STANDALONE" ] && PDF_SRC="$OUTPUT_STANDALONE"
+    makePdf "$PDF_SRC" "$OUTPUT_PDF"
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 >&2 echo ""
 >&2 echo "Done."
-$DO_HTML    && >&2 echo "  HTML:       $(realpath ./manual.html)"
-$STANDALONE && >&2 echo "  Standalone: $(realpath ./manual-standalone.html)"
-$DO_PDF     && >&2 echo "  PDF:        $(realpath ./manual.pdf)"
+$DO_HTML    && >&2 echo "  HTML:       $(realpath "$OUTPUT_HTML")"
+$STANDALONE && >&2 echo "  Standalone: $(realpath "$OUTPUT_STANDALONE")"
+$DO_PDF     && >&2 echo "  PDF:        $(realpath "$OUTPUT_PDF")"

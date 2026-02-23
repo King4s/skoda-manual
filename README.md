@@ -105,12 +105,16 @@ https://digital-manual.skoda-auto.com/w/da_DK/show/b6c0b6d20c1b2988ac1445253a0f2
 
 ## Output Files
 
-The script writes output files directly in the working directory:
-- `manual.html` when HTML is selected
-- `manual-standalone.html` when `--standalone` is selected
-- `manual.pdf` when `--pdf` is selected
+The script auto-generates output filenames from the manual title:
 
-For non-standalone HTML, keep these next to `manual.html`:
+`<Manual Title> (<LANGUAGE>) (<DD-MM-YYYY HH-MM-SS>).ext`
+
+Examples:
+- `Superb Owner's Manual (da_DK) (23-02-2026 15-04-58).html`
+- `Superb Owner's Manual (da_DK) (23-02-2026 15-04-58) (standalone).html`
+- `Superb Owner's Manual (da_DK) (23-02-2026 15-04-58).pdf`
+
+For non-standalone HTML, keep these next to the generated `.html` file:
 - `extra.css`
 - `bootstrap.css`
 - `images/`
