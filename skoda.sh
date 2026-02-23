@@ -5,23 +5,22 @@ set +H
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
-MANUAL=""
-LANGUAGE="en_GB"
+IDENTIFIER=""    # VIN (17 chars) or partNumber (e.g. 657012738AR)
+MANUAL=""        # topic ID — resolved after session init
+LANGUAGE="da_DK"
 DO_HTML=false
 DO_PDF=false
 STANDALONE=false
-LIST_MANUALS=false
 CLEAR_CACHE=false
 INTERACTIVE=false
 TOC_CONTENT=""
-TOC=true
 CURRENT_SECTION=0
 TOTAL_SECTIONS=0
 MAXSECT=100
 ACTIVATE_DELAY=false
 PDF_RENDERER=""
 REFERER="https://digital-manual.skoda-auto.com/"
-COOKIES=""
+SESSION_JAR="./cache/session.jar"
 
 # ─── Load .env if present ─────────────────────────────────────────────────────
 if [ -f ".env" ]; then
@@ -34,45 +33,44 @@ while [[ $# -gt 0 ]]; do
         --html)        DO_HTML=true;       shift ;;
         --pdf)         DO_PDF=true;        shift ;;
         --standalone)  STANDALONE=true;    shift ;;
-        --list)        LIST_MANUALS=true;  shift ;;
         --clear-cache) CLEAR_CACHE=true;   shift ;;
         --help|-h)
             cat <<EOF
-Usage: $(basename "$0") [OPTIONS] [MANUAL_ID] [LANGUAGE]
+Usage: $(basename "$0") [OPTIONS] [VIN_ELLER_DELNUMMER] [LANGUAGE]
 
-  Run without arguments for interactive mode.
+  Kør uden argumenter for interaktiv tilstand.
+
+  VIN_ELLER_DELNUMMER:
+    Stelnummer (17 tegn)       f.eks. TMBZZZ3FZN1234567
+    Delnummer (VW/Škoda format) f.eks. 657012738AR
 
 Options:
-  --html          Generate HTML output (default if no format specified)
-  --pdf           Generate PDF output (requires chromium, wkhtmltopdf, or weasyprint)
-  --standalone    Embed all assets in HTML (single self-contained file)
-  --list          List available manuals for LANGUAGE (default: da_DK)
-  --clear-cache   Delete ./cache/ and ./images/
-  --help          Show this help
-
-No login or credentials required — manuals are publicly accessible.
+  --html          Generer HTML (standard)
+  --pdf           Generer PDF (kræver chromium, wkhtmltopdf eller weasyprint)
+  --standalone    Indbyg alle billeder i HTML-filen (enkelt fil)
+  --clear-cache   Slet ./cache/ og ./images/
+  --help          Vis denne hjælp
 
 Examples:
   $(basename "$0")
-  $(basename "$0") --list da_DK
-  $(basename "$0") b6c0b6d20c1b2988ac1445253a0f2c00_3_da_DK da_DK --html
-  $(basename "$0") b6c0b6d20c1b2988ac1445253a0f2c00_3_da_DK da_DK --html --pdf
-  $(basename "$0") b6c0b6d20c1b2988ac1445253a0f2c00_3_da_DK da_DK --standalone
+  $(basename "$0") 657012738AR da_DK --html
+  $(basename "$0") TMBZZZ3FZN1234567 da_DK --html
+  $(basename "$0") 657012738AR da_DK --standalone
   $(basename "$0") --clear-cache
 EOF
             exit 0 ;;
         --*)
-            >&2 echo "ERROR: Unknown option: $1"
-            >&2 echo "Run '$(basename "$0") --help' for usage."
+            >&2 echo "FEJL: Ukendt flag: $1"
+            >&2 echo "Kør '$(basename "$0") --help' for brug."
             exit 1 ;;
         *)
-            [ -z "$MANUAL" ] && MANUAL="$1" || LANGUAGE="$1"
+            [ -z "$IDENTIFIER" ] && IDENTIFIER="$1" || LANGUAGE="$1"
             shift ;;
     esac
 done
 
 # Determine mode
-if [ -z "$MANUAL" ] && ! $LIST_MANUALS && ! $CLEAR_CACHE; then
+if [ -z "$IDENTIFIER" ] && ! $CLEAR_CACHE; then
     INTERACTIVE=true
 fi
 
@@ -119,21 +117,53 @@ mkdir -p ./images ./cache
 
 # ─── Session ──────────────────────────────────────────────────────────────────
 function initSession() {
-    local JAR="./cache/session.jar"
-    local LANG="${LANGUAGE:-da_DK}"
-    >&2 echo "Initialising session..."
-    curl -s -c "${JAR}" \
-        "https://digital-manual.skoda-auto.com/w/${LANG}/" \
+    local POSTDATA
+    local ID="${1:-$IDENTIFIER}"
+
+    # Detect VIN (17 alphanumeric chars) vs partNumber
+    if [[ "$ID" =~ ^[A-HJ-NPR-Z0-9]{17}$ ]]; then
+        POSTDATA="vin=${ID}&uiLanguage=${LANGUAGE}&importerId=004"
+        >&2 echo "Initialiserer session med stelnummer..."
+    else
+        POSTDATA="partNumber=${ID}&uiLanguage=${LANGUAGE}&importerId=004"
+        >&2 echo "Initialiserer session med delnummer..."
+    fi
+
+    curl -s -c "${SESSION_JAR}" -o /dev/null \
+        -X POST "https://digital-manual.skoda-auto.com/api/entrypoint/V1/direct/" \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        -H 'Origin: https://www.skoda.dk' \
+        -H 'Referer: https://www.skoda.dk/apps/manuals/Models' \
         -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36' \
-        -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
-        -H 'Accept-Language: en-US,en;q=0.5' \
-        -o /dev/null
-    COOKIES=$(awk '!/^#/ && NF==7 {printf "%s=%s; ", $6, $7}' "${JAR}" | sed 's/; $//')
-    if [ -z "$COOKIES" ]; then
-        >&2 echo "ERROR: Could not initialise session — no cookies received."
+        -H 'Sec-Fetch-Site: cross-site' \
+        -H 'Sec-Fetch-Mode: navigate' \
+        -H 'Sec-Fetch-Dest: document' \
+        --data "${POSTDATA}"
+
+    # Verify session
+    local CHECK
+    CHECK=$(curl -s -b "${SESSION_JAR}" \
+        -H 'Accept: application/json' \
+        "https://digital-manual.skoda-auto.com/api/users/V1/getuser")
+    if ! echo "${CHECK}" | grep -q '"username":"Direct_PN"'; then
+        >&2 echo "FEJL: Session ugyldig. Tjek at stelnummer/delnummer er korrekt og tilhører en Škoda."
         exit 1
     fi
-    >&2 echo "Session ready."
+    >&2 echo "Session klar."
+}
+
+function resolveManualId() {
+    # After auth, find the topic ID accessible via this session
+    local SEARCH_FILE="./cache/manual_list_${LANGUAGE}.json"
+    rm -f "${SEARCH_FILE}"
+    fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "${SEARCH_FILE}"
+    MANUAL=$(jq -r '.results[0].topicId // empty' "${SEARCH_FILE}")
+    if [ -z "${MANUAL}" ]; then
+        >&2 echo "FEJL: Ingen instruktionsbog fundet for dette stelnummer/delnummer på sproget ${LANGUAGE}."
+        >&2 echo "Prøv et andet sprog (f.eks. en_GB)."
+        exit 1
+    fi
+    >&2 echo "Manual fundet: ${MANUAL}"
 }
 
 function fetchFile() {
@@ -147,16 +177,14 @@ function fetchFile() {
     fi
 
     if [ ! -s "${DESTINATION}" ]; then
-        >&2 echo "Fetching ${DESTINATION}"
+        >&2 echo "Henter ${DESTINATION}"
         rm -f "${DESTINATION}"
         curl "${URL}" --retry 10 --retry-all-errors --compressed \
-            -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0' \
+            -b "${SESSION_JAR}" -c "${SESSION_JAR}" \
+            -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36' \
             -H 'Accept: application/json, text/plain, */*' \
-            -H 'Accept-Language: en-US,en;q=0.5' \
-            -H 'Accept-Encoding: gzip, deflate, br' \
-            -H 'Connection: keep-alive' \
+            -H 'Accept-Language: da-DK,da;q=0.9,en;q=0.5' \
             -H "Referer: $REFERER" \
-            -H "Cookie: $COOKIES" \
             -H 'Sec-Fetch-Dest: empty' \
             -H 'Sec-Fetch-Mode: cors' \
             -H 'Sec-Fetch-Site: same-origin' \
@@ -168,7 +196,7 @@ function fetchFile() {
 
     if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
         rm -f "${DESTINATION}"
-        >&2 echo "Session expired — reinitialising..."
+        >&2 echo "Session udløbet — fornyer..."
         initSession
         fetchFile "$URL" "${DESTINATION}" $(( RETRY + 1 ))
     fi
@@ -196,26 +224,24 @@ function grabImage() {
         fi
     fi
 
-    >&2 echo "  Fetching image: ${IMG}"
+    >&2 echo "  Henter billede: ${IMG}"
     rm -f "${DESTINATION}"
     curl "https://digital-manual.skoda-auto.com/public/media?lang=${LANGUAGE}&key=${IMG}" \
         --retry 10 --retry-all-errors \
-        -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0' \
+        -b "${SESSION_JAR}" -c "${SESSION_JAR}" \
+        -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36' \
         -H 'Accept: image/avif,image/webp,*/*' \
-        -H 'Accept-Language: en-US,en;q=0.5' \
+        -H 'Accept-Language: da-DK,da;q=0.9,en;q=0.5' \
         -H "Referer: $REFERER" \
-        -H "Cookie: $COOKIES" \
         -H 'Sec-Fetch-Dest: image' \
         -H 'Sec-Fetch-Mode: no-cors' \
         -H 'Sec-Fetch-Site: same-origin' \
-        -H 'Pragma: no-cache' \
-        -H 'Cache-Control: no-cache' \
         > "${DESTINATION}"
     ACTIVATE_DELAY=true
 
     if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
         rm -f "${DESTINATION}"
-        >&2 echo "Session expired (image) — reinitialising..."
+        >&2 echo "Session udløbet (billede) — fornyer..."
         initSession
         grabImage "$IMG" "$DEST_PATH" $(( RETRY + 1 ))
     fi
@@ -494,12 +520,12 @@ function interactiveMode() {
 
     echo ""
     echo "╔══════════════════════════════════════════════════╗"
-    echo "║          ŠKODA Manual Downloader                 ║"
+    echo "║       ŠKODA Instruktionsbog Downloader           ║"
     echo "╚══════════════════════════════════════════════════╝"
 
     # ── Step 1: Language ───────────────────────────────────────────────────────
     echo ""
-    echo "Step 1/3 — Language"
+    echo "Trin 1/3 — Sprog"
     echo ""
 
     local -a LANG_CODES=("da_DK" "en_GB" "de_DE" "cs_CZ" "sk_SK" "fr_FR" "nl_NL" "pl_PL" "es_ES" "it_IT")
@@ -513,63 +539,50 @@ function interactiveMode() {
     echo ""
 
     local lang_choice
-    read -r -p "  Choose [1]: " lang_choice
+    read -r -p "  Vælg [1]: " lang_choice
     lang_choice=${lang_choice:-1}
 
     if [ "$lang_choice" -eq "$((n_langs+1))" ] 2>/dev/null; then
-        read -r -p "  Enter language code (e.g. sv_SE): " LANGUAGE
+        read -r -p "  Indtast sprogkode (f.eks. sv_SE): " LANGUAGE
     elif [ "$lang_choice" -ge 1 ] && [ "$lang_choice" -le "$n_langs" ] 2>/dev/null; then
         LANGUAGE="${LANG_CODES[$((lang_choice-1))]}"
     fi
     echo "  → ${LANGUAGE}"
 
-    # Initialise session now that we have LANGUAGE
-    REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/"
-    initSession
-
-    # ── Step 2: Select manual ──────────────────────────────────────────────────
+    # ── Step 2: VIN or partNumber ──────────────────────────────────────────────
     echo ""
-    echo "Step 2/3 — Manual"
+    echo "Trin 2/3 — Stelnummer eller delnummer"
+    echo ""
+    echo "  Indtast bilens stelnummer (17 tegn, f.eks. TMBZZZ3FZN1234567)"
+    echo "  eller delnummer (f.eks. 657012738AR)."
+    echo "  Stelnummeret finder du i bilens papirer eller på dashboardet."
     echo ""
 
-    local LIST_FILE="./cache/manual_list_${LANGUAGE}.json"
-    echo "  Fetching available manuals..." >&2
-    fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "$LIST_FILE"
-
-    local -a MANUAL_IDS=()
-    local -a MANUAL_TITLES=()
-    while IFS=$'\t' read -r id title; do
-        MANUAL_IDS+=("$id")
-        MANUAL_TITLES+=("$title")
-    done < <(jq -r '.results[] | [.topicId, (.abstractText // "N/A")] | @tsv' "$LIST_FILE")
-
-    local n_manuals=${#MANUAL_IDS[@]}
-    if [ "$n_manuals" -eq 0 ]; then
-        >&2 echo "  No manuals found for language ${LANGUAGE}."
+    local id_input
+    read -r -p "  Stelnummer/delnummer: " id_input
+    if [ -z "$id_input" ]; then
+        >&2 echo "FEJL: Intet stelnummer/delnummer angivet."
         exit 1
     fi
+    IDENTIFIER="$id_input"
+    echo "  → ${IDENTIFIER}"
 
-    for ((i=0; i<n_manuals; i++)); do
-        printf "  %2d)  %s\n" "$((i+1))" "${MANUAL_TITLES[$i]}"
-    done
-    echo ""
+    # Initialise session now that we have IDENTIFIER and LANGUAGE
+    REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/"
+    initSession
+    resolveManualId
 
-    local manual_choice
-    read -r -p "  Choose [1]: " manual_choice
-    manual_choice=${manual_choice:-1}
-    if [ "$manual_choice" -lt 1 ] || [ "$manual_choice" -gt "$n_manuals" ] 2>/dev/null; then
-        manual_choice=1
-    fi
-    MANUAL="${MANUAL_IDS[$((manual_choice-1))]}"
-    local SELECTED_TITLE="${MANUAL_TITLES[$((manual_choice-1))]}"
-    echo "  → ${SELECTED_TITLE}"
+    local SELECTED_TITLE
+    SELECTED_TITLE=$(jq -r '.results[0].abstractText // .results[0].title // "Ukendt"' \
+        "./cache/manual_list_${LANGUAGE}.json" 2>/dev/null)
+    echo "  → Fundet: ${SELECTED_TITLE}"
 
     # Update REFERER now that we have MANUAL
     REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/show/${MANUAL}?ct=${MANUAL}"
 
     # ── Step 3: Output format ──────────────────────────────────────────────────
     echo ""
-    echo "Step 3/3 — Output format"
+    echo "Trin 3/3 — Outputformat"
     echo ""
     echo "  1)  HTML"
 
@@ -577,32 +590,32 @@ function interactiveMode() {
         echo "  2)  PDF                         (renderer: $PDF_RENDERER)"
         echo "  3)  HTML + PDF"
     else
-        echo "  2)  PDF                         (not available — install chromium)"
-        echo "  3)  HTML + PDF                  (not available)"
+        echo "  2)  PDF                         (ikke tilgængelig — installer chromium)"
+        echo "  3)  HTML + PDF                  (ikke tilgængelig)"
     fi
 
-    echo "  4)  Standalone HTML             (single file, no images/ folder)"
+    echo "  4)  Standalone HTML             (enkelt fil, ingen images/ mappe)"
 
     if [ -n "$PDF_RENDERER" ]; then
         echo "  5)  Standalone HTML + PDF"
     else
-        echo "  5)  Standalone HTML + PDF       (not available)"
+        echo "  5)  Standalone HTML + PDF       (ikke tilgængelig)"
     fi
     echo ""
 
     local fmt_choice
-    read -r -p "  Choose [1]: " fmt_choice
+    read -r -p "  Vælg [1]: " fmt_choice
     fmt_choice=${fmt_choice:-1}
 
     case $fmt_choice in
         1) DO_HTML=true ;;
         2) if [ -n "$PDF_RENDERER" ]; then DO_PDF=true
-           else echo "  No PDF renderer found. Falling back to HTML."; DO_HTML=true; fi ;;
+           else echo "  Ingen PDF-renderer. Bruger HTML."; DO_HTML=true; fi ;;
         3) if [ -n "$PDF_RENDERER" ]; then DO_HTML=true; DO_PDF=true
-           else echo "  No PDF renderer found. Falling back to HTML only."; DO_HTML=true; fi ;;
+           else echo "  Ingen PDF-renderer. Bruger HTML."; DO_HTML=true; fi ;;
         4) DO_HTML=true; STANDALONE=true ;;
         5) if [ -n "$PDF_RENDERER" ]; then DO_HTML=true; STANDALONE=true; DO_PDF=true
-           else echo "  No PDF renderer found. Generating standalone HTML only."; DO_HTML=true; STANDALONE=true; fi ;;
+           else echo "  Ingen PDF-renderer. Laver standalone HTML."; DO_HTML=true; STANDALONE=true; fi ;;
         *) DO_HTML=true ;;
     esac
 
@@ -610,7 +623,7 @@ function interactiveMode() {
     echo ""
     echo "──────────────────────────────────────────────────────"
     echo "  Manual:   ${SELECTED_TITLE}"
-    echo "  Language: ${LANGUAGE}"
+    echo "  Sprog:    ${LANGUAGE}"
     echo -n "  Output:   "
     $DO_HTML    && echo -n "HTML "
     $STANDALONE && echo -n "(standalone) "
@@ -620,10 +633,10 @@ function interactiveMode() {
     echo ""
 
     local confirm
-    read -r -p "  Start download? [Y/n]: " confirm
-    confirm=${confirm:-Y}
-    if [[ ! "$confirm" =~ ^[Yy] ]]; then
-        echo "  Aborted."
+    read -r -p "  Start download? [J/n]: " confirm
+    confirm=${confirm:-J}
+    if [[ ! "$confirm" =~ ^[JjYy] ]]; then
+        echo "  Afbrudt."
         exit 0
     fi
     echo ""
@@ -634,34 +647,15 @@ function interactiveMode() {
 if $INTERACTIVE; then
     interactiveMode
 else
-    # Set REFERER
-    REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/"
-
-    # Handle --list
-    if $LIST_MANUALS; then
-        [ -n "$MANUAL" ] && LANGUAGE="$MANUAL"
-        initSession
-        local_list="./cache/manual_list_${LANGUAGE}.json"
-        >&2 echo "Fetching available manuals (${LANGUAGE})..."
-        fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "$local_list"
-        echo ""
-        printf "  %-52s  %s\n" "MANUAL ID" "TITLE"
-        printf "  %-52s  %s\n" "---------" "-----"
-        jq -r '.results[] | [.topicId, (.abstractText // "N/A")] | @tsv' "$local_list" | \
-            while IFS=$'\t' read -r id title; do
-                printf "  %-52s  %s\n" "$id" "$title"
-            done
-        echo ""
-        exit 0
-    fi
-
-    if [ -z "$MANUAL" ]; then
-        >&2 echo "ERROR: No manual ID specified."
-        >&2 echo "Use '$(basename "$0") --list ${LANGUAGE}' to see available manuals."
+    if [ -z "$IDENTIFIER" ]; then
+        >&2 echo "FEJL: Intet stelnummer eller delnummer angivet."
+        >&2 echo "Kør '$(basename "$0") --help' for brug."
         exit 1
     fi
 
+    REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/"
     initSession
+    resolveManualId
     REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/show/${MANUAL}?ct=${MANUAL}"
 fi
 
@@ -674,12 +668,15 @@ if [ ! -f "bootstrap.css" ]; then
 fi
 
 # ─── Download content ─────────────────────────────────────────────────────────
->&2 echo "Fetching table of contents: ${MANUAL} (${LANGUAGE})..."
+>&2 echo "Henter indholdsfortegnelse: ${MANUAL} (${LANGUAGE})..."
 TOPIC_PATH=./cache/topic.json
 fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/topic?key=${MANUAL}&displaytype=topic&language=${LANGUAGE}&query=undefined" "$TOPIC_PATH"
 
-MANUAL_LIST_PATH=./cache/manual_list.json
-fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "$MANUAL_LIST_PATH"
+MANUAL_LIST_PATH="./cache/manual_list_${LANGUAGE}.json"
+# Already fetched by resolveManualId — only refetch if missing
+if [ ! -s "${MANUAL_LIST_PATH}" ]; then
+    fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "$MANUAL_LIST_PATH"
+fi
 
 grabImage "$(jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .previewImage" "$MANUAL_LIST_PATH")" "./images"
 
@@ -710,9 +707,9 @@ OUTPUT_PDF="./${OUTPUT_BASE}.pdf"
 >&2 echo "Output base: ${OUTPUT_BASE}"
 
 # ─── Generate HTML ────────────────────────────────────────────────────────────
->&2 echo "Generating HTML..."
+>&2 echo "Genererer HTML..."
 generateHtml "$MANUAL_LIST_PATH" > "$OUTPUT_HTML"
->&2 echo "HTML written ($(du -sh "$OUTPUT_HTML" | cut -f1))"
+>&2 echo "HTML skrevet ($(du -sh "$OUTPUT_HTML" | cut -f1))"
 
 # ─── Standalone ───────────────────────────────────────────────────────────────
 if $STANDALONE; then
@@ -728,7 +725,7 @@ fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 >&2 echo ""
->&2 echo "Done."
+>&2 echo "Færdig."
 $DO_HTML    && >&2 echo "  HTML:       $(realpath "$OUTPUT_HTML")"
 $STANDALONE && >&2 echo "  Standalone: $(realpath "$OUTPUT_STANDALONE")"
 $DO_PDF     && >&2 echo "  PDF:        $(realpath "$OUTPUT_PDF")"
