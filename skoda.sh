@@ -466,7 +466,7 @@ function makePdf() {
 
 function sanitizeFileComponent() {
     local RAW=$1
-    RAW="$(echo "$RAW" | tr '\r\n\t' '   ' | sed -E 's/[\/\\:*?"<>|]+/-/g; s/[[:space:]]+/ /g; s/^ +//; s/ +$//')"
+    RAW="$(echo "$RAW" | tr '\r\n\t' '   ' | sed -E 's/[\/\\:*?"<>|()]+/_/g; s/[[:space:]]+/_/g; s/_+/_/g; s/^_+//; s/_+$//')"
     [ -z "$RAW" ] && RAW="manual"
     echo "$RAW"
 }
@@ -749,10 +749,10 @@ if [ -z "$MANUAL_NAME_RAW" ] || [ "$MANUAL_NAME_RAW" = "null" ]; then
     MANUAL_NAME_RAW="$MANUAL"
 fi
 MANUAL_NAME="$(sanitizeFileComponent "$MANUAL_NAME_RAW")"
-OUTPUT_TIMESTAMP="$(date '+%d-%m-%Y %H-%M-%S')"
-OUTPUT_BASE="${MANUAL_NAME} (${LANGUAGE}) (${OUTPUT_TIMESTAMP})"
+OUTPUT_TIMESTAMP="$(date '+%d-%m-%Y_%H-%M-%S')"
+OUTPUT_BASE="${MANUAL_NAME}_${LANGUAGE}_${OUTPUT_TIMESTAMP}"
 OUTPUT_HTML="./${OUTPUT_BASE}.html"
-OUTPUT_STANDALONE="./${OUTPUT_BASE} (standalone).html"
+OUTPUT_STANDALONE="./${OUTPUT_BASE}_standalone.html"
 OUTPUT_PDF="./${OUTPUT_BASE}.pdf"
 >&2 echo "Output base: ${OUTPUT_BASE}"
 

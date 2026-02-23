@@ -107,12 +107,12 @@ https://digital-manual.skoda-auto.com/w/da_DK/show/b6c0b6d20c1b2988ac1445253a0f2
 
 The script auto-generates output filenames from the manual title:
 
-`<Manual Title> (<LANGUAGE>) (<DD-MM-YYYY HH-MM-SS>).ext`
+`<Manual_Title>_<LANGUAGE>_<DD-MM-YYYY_HH-MM-SS>.ext`
 
 Examples:
-- `Superb Owner's Manual (da_DK) (23-02-2026 15-04-58).html`
-- `Superb Owner's Manual (da_DK) (23-02-2026 15-04-58) (standalone).html`
-- `Superb Owner's Manual (da_DK) (23-02-2026 15-04-58).pdf`
+- `Superb_Owner's_Manual_da_DK_23-02-2026_15-04-58.html`
+- `Superb_Owner's_Manual_da_DK_23-02-2026_15-04-58_standalone.html`
+- `Superb_Owner's_Manual_da_DK_23-02-2026_15-04-58.pdf`
 
 For non-standalone HTML, keep these next to the generated `.html` file:
 - `extra.css`
