@@ -4,16 +4,20 @@ Download a ŠKODA digital owner's manual to local files (HTML, standalone HTML, 
 
 No cookies, no login, no browser required. Provide your car's VIN or part number and the script handles everything automatically.
 
+Available for **Linux/macOS** (`skoda.sh`) and **Windows** (`skoda.bat` + `skoda.ps1`).
+
 Based on [jypma/skoda-manual](https://github.com/jypma/skoda-manual), with fixes from [PR #2 (ematt)](https://github.com/jypma/skoda-manual/pull/2) plus:
 - Automatic session creation via the Škoda entrypoint API (`importerId=004`)
 - VIN or part number as input — no manual ID hunting required
-- Interactive menu mode (`./skoda.sh` with no arguments)
+- Interactive menu mode
 - Resume support with caching in `./cache` and `./images`
-- PDF output support via Chromium, wkhtmltopdf, or WeasyPrint
+- PDF output support (Linux: Chromium/wkhtmltopdf/WeasyPrint)
 
-## Requirements
+---
 
-Required:
+## Linux / macOS
+
+### Requirements
 
 ```bash
 sudo apt install curl jq libxml2-utils coreutils python3
@@ -29,51 +33,54 @@ sudo apt install wkhtmltopdf
 pip install weasyprint
 ```
 
-## Quick Start (Interactive)
-
-Run without arguments:
+### Quick Start (Interactive)
 
 ```bash
-cd /opt/skoda-manual
 ./skoda.sh
 ```
 
-The interactive menu walks through:
-1. Language selection
-2. VIN or part number
-3. Output format (HTML / PDF / standalone variants)
-
-## Non-interactive Usage
-
-Download a manual using a VIN:
-
-```bash
-./skoda.sh TMBZZZ3FZN1234567 da_DK --html
-```
-
-Download using a part number:
+### Non-interactive
 
 ```bash
 ./skoda.sh 657012738AR da_DK --html
-```
-
-Download HTML + PDF:
-
-```bash
+./skoda.sh TMBZZZ3FZN1234567 da_DK --html
 ./skoda.sh 657012738AR da_DK --html --pdf
-```
-
-Download standalone HTML (single file, no external assets):
-
-```bash
 ./skoda.sh 657012738AR da_DK --standalone
-```
-
-Clear cache and start over:
-
-```bash
 ./skoda.sh --clear-cache
 ```
+
+---
+
+## Windows
+
+### Requirements
+
+- Windows 10 or later (PowerShell 5.1 is included)
+- No additional installs needed
+
+### Quick Start (Interactive)
+
+Double-click **`skoda.bat`**.
+
+The batch file checks that PowerShell is available and at least version 5.1, then launches `skoda.ps1` with the correct execution policy so Windows does not block it.
+
+### Non-interactive (PowerShell)
+
+```powershell
+.\skoda.ps1 657012738AR da_DK -Html
+.\skoda.ps1 TMBZZZ3FZN1234567 da_DK -Html
+.\skoda.ps1 657012738AR da_DK -Standalone
+.\skoda.ps1 -ClearCache
+.\skoda.ps1 -Help
+```
+
+Or via the batch file:
+
+```cmd
+skoda.bat 657012738AR da_DK -Html
+```
+
+---
 
 ## Finding Your VIN or Part Number
 
@@ -83,7 +90,7 @@ Clear cache and start over:
 
 ## How It Works
 
-1. The script POSTs your VIN or part number to `digital-manual.skoda-auto.com/api/entrypoint/V1/direct/` (the same endpoint the Škoda website uses)
+1. The script POSTs your VIN or part number to `digital-manual.skoda-auto.com/api/entrypoint/V1/direct/` (the same endpoint the Škoda website uses, with `importerId=004`)
 2. The server creates an authenticated session
 3. The script fetches the manual topic tree and all content via the session
 4. HTML is assembled locally from the fetched JSON
@@ -118,6 +125,7 @@ Rerun the same command to resume an interrupted download.
 |---|---|---|
 | `Session invalid` | VIN/part number not recognised | Double-check the VIN or use the part number from skoda.dk |
 | `No manual found for this VIN/part number` | Language not available for this model | Try `en_GB` instead |
-| `ERROR: Interactive mode requires a terminal` | Run in non-TTY environment | Run in a real terminal, or pass flags directly |
-| `ERROR: No PDF renderer found` | `--pdf` selected without renderer | Install Chromium, wkhtmltopdf, or WeasyPrint |
+| `Interactive mode requires a terminal` | Run in non-TTY environment | Run in a real terminal, or pass arguments directly |
+| `No PDF renderer found` | `--pdf` used without a renderer installed | Install Chromium, wkhtmltopdf, or WeasyPrint |
+| `running scripts is disabled` (Windows) | PowerShell execution policy blocks scripts | Use `skoda.bat` instead of running `.ps1` directly |
 | Missing sections or images | Interrupted run | Rerun the same command (cache resumes) |
