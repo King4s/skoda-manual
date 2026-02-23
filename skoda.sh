@@ -36,20 +36,20 @@ while [[ $# -gt 0 ]]; do
         --clear-cache) CLEAR_CACHE=true;   shift ;;
         --help|-h)
             cat <<EOF
-Usage: $(basename "$0") [OPTIONS] [VIN_ELLER_DELNUMMER] [LANGUAGE]
+Usage: $(basename "$0") [OPTIONS] [VIN_OR_PARTNUMBER] [LANGUAGE]
 
-  Kør uden argumenter for interaktiv tilstand.
+  Run without arguments for interactive mode.
 
-  VIN_ELLER_DELNUMMER:
-    Stelnummer (17 tegn)       f.eks. TMBZZZ3FZN1234567
-    Delnummer (VW/Škoda format) f.eks. 657012738AR
+  VIN_OR_PARTNUMBER:
+    VIN (17 chars)             e.g. TMBZZZ3FZN1234567
+    Part number (VW/Škoda)     e.g. 657012738AR
 
 Options:
-  --html          Generer HTML (standard)
-  --pdf           Generer PDF (kræver chromium, wkhtmltopdf eller weasyprint)
-  --standalone    Indbyg alle billeder i HTML-filen (enkelt fil)
-  --clear-cache   Slet ./cache/ og ./images/
-  --help          Vis denne hjælp
+  --html          Generate HTML output (default)
+  --pdf           Generate PDF (requires chromium, wkhtmltopdf, or weasyprint)
+  --standalone    Embed all assets into a single HTML file
+  --clear-cache   Delete ./cache/ and ./images/
+  --help          Show this help
 
 Examples:
   $(basename "$0")
@@ -60,8 +60,8 @@ Examples:
 EOF
             exit 0 ;;
         --*)
-            >&2 echo "FEJL: Ukendt flag: $1"
-            >&2 echo "Kør '$(basename "$0") --help' for brug."
+            >&2 echo "ERROR: Unknown option: $1"
+            >&2 echo "Run '$(basename "$0") --help' for usage."
             exit 1 ;;
         *)
             [ -z "$IDENTIFIER" ] && IDENTIFIER="$1" || LANGUAGE="$1"
@@ -123,10 +123,10 @@ function initSession() {
     # Detect VIN (17 alphanumeric chars) vs partNumber
     if [[ "$ID" =~ ^[A-HJ-NPR-Z0-9]{17}$ ]]; then
         POSTDATA="vin=${ID}&uiLanguage=${LANGUAGE}&importerId=004"
-        >&2 echo "Initialiserer session med stelnummer..."
+        >&2 echo "Initialising session with VIN..."
     else
         POSTDATA="partNumber=${ID}&uiLanguage=${LANGUAGE}&importerId=004"
-        >&2 echo "Initialiserer session med delnummer..."
+        >&2 echo "Initialising session with part number..."
     fi
 
     curl -s -c "${SESSION_JAR}" -o /dev/null \
@@ -146,10 +146,10 @@ function initSession() {
         -H 'Accept: application/json' \
         "https://digital-manual.skoda-auto.com/api/users/V1/getuser")
     if ! echo "${CHECK}" | grep -q '"username":"Direct_PN"'; then
-        >&2 echo "FEJL: Session ugyldig. Tjek at stelnummer/delnummer er korrekt og tilhører en Škoda."
+        >&2 echo "ERROR: Session invalid. Check that the VIN or part number is correct and belongs to a Škoda."
         exit 1
     fi
-    >&2 echo "Session klar."
+    >&2 echo "Session ready."
 }
 
 function resolveManualId() {
@@ -159,11 +159,11 @@ function resolveManualId() {
     fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/search?query=&facetfilters=topic-type_%7C_welcome&lang=${LANGUAGE}&page=0&pageSize=200" "${SEARCH_FILE}"
     MANUAL=$(jq -r '.results[0].topicId // empty' "${SEARCH_FILE}")
     if [ -z "${MANUAL}" ]; then
-        >&2 echo "FEJL: Ingen instruktionsbog fundet for dette stelnummer/delnummer på sproget ${LANGUAGE}."
-        >&2 echo "Prøv et andet sprog (f.eks. en_GB)."
+        >&2 echo "ERROR: No manual found for this VIN/part number in language ${LANGUAGE}."
+        >&2 echo "Try a different language (e.g. en_GB)."
         exit 1
     fi
-    >&2 echo "Manual fundet: ${MANUAL}"
+    >&2 echo "Manual resolved: ${MANUAL}"
 }
 
 function fetchFile() {
@@ -177,7 +177,7 @@ function fetchFile() {
     fi
 
     if [ ! -s "${DESTINATION}" ]; then
-        >&2 echo "Henter ${DESTINATION}"
+        >&2 echo "Fetching ${DESTINATION}"
         rm -f "${DESTINATION}"
         curl "${URL}" --retry 10 --retry-all-errors --compressed \
             -b "${SESSION_JAR}" -c "${SESSION_JAR}" \
@@ -196,7 +196,7 @@ function fetchFile() {
 
     if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
         rm -f "${DESTINATION}"
-        >&2 echo "Session udløbet — fornyer..."
+        >&2 echo "Session expired — reinitialising..."
         initSession
         fetchFile "$URL" "${DESTINATION}" $(( RETRY + 1 ))
     fi
@@ -224,7 +224,7 @@ function grabImage() {
         fi
     fi
 
-    >&2 echo "  Henter billede: ${IMG}"
+    >&2 echo "  Fetching image: ${IMG}"
     rm -f "${DESTINATION}"
     curl "https://digital-manual.skoda-auto.com/public/media?lang=${LANGUAGE}&key=${IMG}" \
         --retry 10 --retry-all-errors \
@@ -241,7 +241,7 @@ function grabImage() {
 
     if grep -q "An Authentication object was not found in the SecurityContext" "${DESTINATION}" 2>/dev/null; then
         rm -f "${DESTINATION}"
-        >&2 echo "Session udløbet (billede) — fornyer..."
+        >&2 echo "Session expired (image) — reinitialising..."
         initSession
         grabImage "$IMG" "$DEST_PATH" $(( RETRY + 1 ))
     fi
@@ -520,12 +520,12 @@ function interactiveMode() {
 
     echo ""
     echo "╔══════════════════════════════════════════════════╗"
-    echo "║       ŠKODA Instruktionsbog Downloader           ║"
+    echo "║          ŠKODA Manual Downloader                 ║"
     echo "╚══════════════════════════════════════════════════╝"
 
     # ── Step 1: Language ───────────────────────────────────────────────────────
     echo ""
-    echo "Trin 1/3 — Sprog"
+    echo "Step 1/3 — Language"
     echo ""
 
     local -a LANG_CODES=("da_DK" "en_GB" "de_DE" "cs_CZ" "sk_SK" "fr_FR" "nl_NL" "pl_PL" "es_ES" "it_IT")
@@ -539,11 +539,11 @@ function interactiveMode() {
     echo ""
 
     local lang_choice
-    read -r -p "  Vælg [1]: " lang_choice
+    read -r -p "  Choose [1]: " lang_choice
     lang_choice=${lang_choice:-1}
 
     if [ "$lang_choice" -eq "$((n_langs+1))" ] 2>/dev/null; then
-        read -r -p "  Indtast sprogkode (f.eks. sv_SE): " LANGUAGE
+        read -r -p "  Enter language code (e.g. sv_SE): " LANGUAGE
     elif [ "$lang_choice" -ge 1 ] && [ "$lang_choice" -le "$n_langs" ] 2>/dev/null; then
         LANGUAGE="${LANG_CODES[$((lang_choice-1))]}"
     fi
@@ -551,17 +551,17 @@ function interactiveMode() {
 
     # ── Step 2: VIN or partNumber ──────────────────────────────────────────────
     echo ""
-    echo "Trin 2/3 — Stelnummer eller delnummer"
+    echo "Step 2/3 — VIN or part number"
     echo ""
-    echo "  Indtast bilens stelnummer (17 tegn, f.eks. TMBZZZ3FZN1234567)"
-    echo "  eller delnummer (f.eks. 657012738AR)."
-    echo "  Stelnummeret finder du i bilens papirer eller på dashboardet."
+    echo "  Enter the car's VIN (17 chars, e.g. TMBZZZ3FZN1234567)"
+    echo "  or part number (e.g. 657012738AR)."
+    echo "  The VIN is found in your car documents or on the dashboard."
     echo ""
 
     local id_input
-    read -r -p "  Stelnummer/delnummer: " id_input
+    read -r -p "  VIN or part number: " id_input
     if [ -z "$id_input" ]; then
-        >&2 echo "FEJL: Intet stelnummer/delnummer angivet."
+        >&2 echo "ERROR: No VIN or part number provided."
         exit 1
     fi
     IDENTIFIER="$id_input"
@@ -573,16 +573,16 @@ function interactiveMode() {
     resolveManualId
 
     local SELECTED_TITLE
-    SELECTED_TITLE=$(jq -r '.results[0].abstractText // .results[0].title // "Ukendt"' \
+    SELECTED_TITLE=$(jq -r '.results[0].abstractText // .results[0].title // "Unknown"' \
         "./cache/manual_list_${LANGUAGE}.json" 2>/dev/null)
-    echo "  → Fundet: ${SELECTED_TITLE}"
+    echo "  → Found: ${SELECTED_TITLE}"
 
     # Update REFERER now that we have MANUAL
     REFERER="https://digital-manual.skoda-auto.com/w/${LANGUAGE}/show/${MANUAL}?ct=${MANUAL}"
 
     # ── Step 3: Output format ──────────────────────────────────────────────────
     echo ""
-    echo "Trin 3/3 — Outputformat"
+    echo "Step 3/3 — Output format"
     echo ""
     echo "  1)  HTML"
 
@@ -590,32 +590,32 @@ function interactiveMode() {
         echo "  2)  PDF                         (renderer: $PDF_RENDERER)"
         echo "  3)  HTML + PDF"
     else
-        echo "  2)  PDF                         (ikke tilgængelig — installer chromium)"
-        echo "  3)  HTML + PDF                  (ikke tilgængelig)"
+        echo "  2)  PDF                         (not available — install chromium)"
+        echo "  3)  HTML + PDF                  (not available)"
     fi
 
-    echo "  4)  Standalone HTML             (enkelt fil, ingen images/ mappe)"
+    echo "  4)  Standalone HTML             (single file, no images/ folder)"
 
     if [ -n "$PDF_RENDERER" ]; then
         echo "  5)  Standalone HTML + PDF"
     else
-        echo "  5)  Standalone HTML + PDF       (ikke tilgængelig)"
+        echo "  5)  Standalone HTML + PDF       (not available)"
     fi
     echo ""
 
     local fmt_choice
-    read -r -p "  Vælg [1]: " fmt_choice
+    read -r -p "  Choose [1]: " fmt_choice
     fmt_choice=${fmt_choice:-1}
 
     case $fmt_choice in
         1) DO_HTML=true ;;
         2) if [ -n "$PDF_RENDERER" ]; then DO_PDF=true
-           else echo "  Ingen PDF-renderer. Bruger HTML."; DO_HTML=true; fi ;;
+           else echo "  No PDF renderer found. Falling back to HTML."; DO_HTML=true; fi ;;
         3) if [ -n "$PDF_RENDERER" ]; then DO_HTML=true; DO_PDF=true
-           else echo "  Ingen PDF-renderer. Bruger HTML."; DO_HTML=true; fi ;;
+           else echo "  No PDF renderer found. Falling back to HTML only."; DO_HTML=true; fi ;;
         4) DO_HTML=true; STANDALONE=true ;;
         5) if [ -n "$PDF_RENDERER" ]; then DO_HTML=true; STANDALONE=true; DO_PDF=true
-           else echo "  Ingen PDF-renderer. Laver standalone HTML."; DO_HTML=true; STANDALONE=true; fi ;;
+           else echo "  No PDF renderer found. Generating standalone HTML only."; DO_HTML=true; STANDALONE=true; fi ;;
         *) DO_HTML=true ;;
     esac
 
@@ -623,7 +623,7 @@ function interactiveMode() {
     echo ""
     echo "──────────────────────────────────────────────────────"
     echo "  Manual:   ${SELECTED_TITLE}"
-    echo "  Sprog:    ${LANGUAGE}"
+    echo "  Language: ${LANGUAGE}"
     echo -n "  Output:   "
     $DO_HTML    && echo -n "HTML "
     $STANDALONE && echo -n "(standalone) "
@@ -633,10 +633,10 @@ function interactiveMode() {
     echo ""
 
     local confirm
-    read -r -p "  Start download? [J/n]: " confirm
-    confirm=${confirm:-J}
-    if [[ ! "$confirm" =~ ^[JjYy] ]]; then
-        echo "  Afbrudt."
+    read -r -p "  Start download? [Y/n]: " confirm
+    confirm=${confirm:-Y}
+    if [[ ! "$confirm" =~ ^[Yy] ]]; then
+        echo "  Aborted."
         exit 0
     fi
     echo ""
@@ -648,8 +648,8 @@ if $INTERACTIVE; then
     interactiveMode
 else
     if [ -z "$IDENTIFIER" ]; then
-        >&2 echo "FEJL: Intet stelnummer eller delnummer angivet."
-        >&2 echo "Kør '$(basename "$0") --help' for brug."
+        >&2 echo "ERROR: No VIN or part number specified."
+        >&2 echo "Run '$(basename "$0") --help' for usage."
         exit 1
     fi
 
@@ -668,7 +668,7 @@ if [ ! -f "bootstrap.css" ]; then
 fi
 
 # ─── Download content ─────────────────────────────────────────────────────────
->&2 echo "Henter indholdsfortegnelse: ${MANUAL} (${LANGUAGE})..."
+>&2 echo "Fetching table of contents: ${MANUAL} (${LANGUAGE})..."
 TOPIC_PATH=./cache/topic.json
 fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/topic?key=${MANUAL}&displaytype=topic&language=${LANGUAGE}&query=undefined" "$TOPIC_PATH"
 
@@ -707,9 +707,9 @@ OUTPUT_PDF="./${OUTPUT_BASE}.pdf"
 >&2 echo "Output base: ${OUTPUT_BASE}"
 
 # ─── Generate HTML ────────────────────────────────────────────────────────────
->&2 echo "Genererer HTML..."
+>&2 echo "Generating HTML..."
 generateHtml "$MANUAL_LIST_PATH" > "$OUTPUT_HTML"
->&2 echo "HTML skrevet ($(du -sh "$OUTPUT_HTML" | cut -f1))"
+>&2 echo "HTML written ($(du -sh "$OUTPUT_HTML" | cut -f1))"
 
 # ─── Standalone ───────────────────────────────────────────────────────────────
 if $STANDALONE; then
@@ -725,7 +725,7 @@ fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 >&2 echo ""
->&2 echo "Færdig."
+>&2 echo "Done."
 $DO_HTML    && >&2 echo "  HTML:       $(realpath "$OUTPUT_HTML")"
 $STANDALONE && >&2 echo "  Standalone: $(realpath "$OUTPUT_STANDALONE")"
 $DO_PDF     && >&2 echo "  PDF:        $(realpath "$OUTPUT_PDF")"
