@@ -1,0 +1,553 @@
+
+body,html {
+    height: 100%
+}
+
+
+body {
+    display: block;
+    font-size: 17px!important;
+    line-height: 1.5em;
+    font-family: Arial,sans-serif;
+    color: #333;
+    background-color: #fff;
+    padding: 0px;
+    margin: 0px;
+}
+
+#toc ol {
+    counter-reset: item;
+}
+
+#toc li {
+    display: block;
+}
+
+#toc li:before {
+    content: counters(item, ".")" ";
+    counter-increment: item;
+}
+
+.toc-label {
+    font-size: 200%;
+    font-weight: bold;
+}
+
+.toc-section {
+    margin-left: 1em;
+}
+
+.section .section-label {
+    font-size: 200%;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    padding-top: 1em;
+    border-top: 1px solid #d3d3d3;
+}
+
+.section .section .section-label {
+    font-size: 200%;
+}
+
+.section .section .section .section-label {
+    font-size: 150%;
+}
+
+img[data-role="symbol"], img[data-role="icon"] {
+    margin-bottom: 0 !important;
+    vertical-align: middle;
+    max-height: unset !important;
+    max-width: 2rem;
+}
+
+img[data-role="safety-alert-symbol"],div[data-class=info-container]>img[data-role=icon]  {
+    margin-bottom: 0 !important;
+    max-height: unset !important;
+    max-width: 2rem;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 100%;
+    margin: 0;
+
+    width: auto !important;
+    height: 19px !important;
+    margin-bottom: 0 !important;
+
+  text-align: left;
+}
+
+p[data-role="signalword"] {
+    display: inline-block !important;
+}
+
+div.topic-content dl {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+dl > div[data-dl-wrapper="dli"] {
+    display: table-row;
+}
+
+dd, dt {
+    display: table-cell !important;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+
+img.symbol, img[data-type=symbol] {
+    height: 1.5em !important;
+    width: auto !important;
+    max-width: unset !important;
+}
+
+
+dt[data-type="legenden-punkt"], dt[data-type="term"] {
+    width: 8rem;
+}
+
+div[data-type="qr-code-block"][data-role="list-container"] dl div[data-dl-wrapper="dli"][data-dl-break-before="avoid"] dt {
+  width: min-content !important;
+  padding-right: 1rem !important;
+}
+
+div[data-role="list-container"][data-class="vw-table-of-symbols"][data-type="symbol-verzeichnis"] > dl div[data-dl-wrapper="dli"] dt {
+  width: 5rem;
+  text-align: center;
+}
+
+div[data-type=qr-code-block][data-role=list-container] dl div[data-dl-wrapper=dli][data-dl-break-before=avoid] {
+    display: block
+}
+
+div[data-type=qr-code-block][data-role=list-container] dl div[data-dl-wrapper=dli][data-dl-break-before=avoid] dt {
+    width: min-content!important;
+    padding-right: 1rem!important
+}
+
+div[data-type=qr-code-block][data-role=list-container] dl div[data-dl-wrapper=dli][data-dl-break-before=avoid] dd :first-child {
+    margin-bottom: 1rem!important;
+}
+
+div[data-type=qr-code-block][data-role=list-container] dl div[data-dl-wrapper=dli][data-dl-break-before=avoid] dd :last-child img {
+    height: 154px!important;
+    max-width: 154px!important;
+}
+
+
+p[data-type=titel][data-role=bridgehead]>span[data-type=symbol]>img.symbol[data-type=symbol][data-role=symbol] {
+    max-height: unset!important;
+    height: 2rem!important;
+    margin-bottom: 0!important;
+    vertical-align: middle!important
+}
+
+div.result .tree_body .topic p[data-role=bridgehead][data-type=titel],div.result .tree_body .topic p[data-role=heading][data-type=titel] {
+    color: #419468!important;
+    padding: 0;
+    margin: 0
+}
+
+#errorModalLabel,.adminPanelHeader,.contentTable__Heading,.index_entry,.modal-header,.nav-tabs__tab,.tpdialog-collection-label,h4,p[data-role=bridgehead][data-type=titel],p[data-role=heading][data-type=titel] {
+    font-weight: bold!important;
+}
+
+
+div.topic-content div[data-role=block]+:not(section),.tree_body div.topic-content div[data-role=block]+:not(section) {
+    margin-top: 2.28571429rem
+}
+
+div.result .tree_body>:not(.topic-content) div[data-type=block]:not(:last-child) {
+    margin-bottom: 20px;
+}
+
+div[data-role=list-container][data-class=vw-list-style-bulleted][data-type=liste]>ul>li[data-type=punkt]>p[data-type="p"]:first-of-type::before {
+    content: '▶'!important;
+    width: 1rem;
+    height: 1rem;
+    padding-right: 5px
+}
+
+div[data-role=list-container][data-class=vw-list-style-action][data-type=liste]>ul>li[data-type=punkt]>p[data-type="p"]:first-of-type::before {
+    content: '˃' !important;
+    width: 1rem;
+    height: 1rem;
+    padding-right: 5px
+}
+
+div[data-role=list-container][data-class=vw-list-style-checklist][data-type=liste]>ul>li[data-type=punkt]>p[data-type="p"]:first-of-type::before {
+    content: '✓' !important;
+    width: 1rem;
+    height: 1rem;
+    padding-right: 5px
+}
+
+
+div[data-role=list-container][data-class=vw-list-style-bulleted][data-type=liste]>ul, div[data-role=list-container][data-class=vw-list-style-action][data-type=liste]>ul, div[data-role=list-container][data-class=vw-list-style-checklist][data-type=liste]>ul  {
+    list-style: none;
+    padding-left: 0;
+}
+
+div[data-role=list-container]>dl {
+    display: table;
+    table-layout: fixed;
+}
+
+div[data-role=list-container]>dl>div>dt[data-type=term] {
+    padding-right:5px
+}
+
+div[data-role=signalword-panel], div[data-role=info-container] {
+    text-align: left !important;
+    width: 100% !important;
+    display: block !important;
+    padding-bottom: 0 !important;
+    padding-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+p[data-role=signalword] {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 100%;
+    margin: 0
+}
+
+div[data-role=message-panel] p:first-of-type {
+    margin-top: 0!important;
+}
+
+/* div div[data-class=info-iso_7010] img[data-role=icon],div div[data-role=info-container] img[data-role=icon],section div[data-class=info-iso_7010] img[data-role=icon],section div[data-role=info-container] img[data-role=icon] {
+    margin: 0 .5rem;
+    display: inline!important;
+    vertical-align: bottom;
+    width: 1.5em;
+}
+
+div[data-dl-wrapper=info-icon] {
+    display: none!important;
+}
+
+div div[data-class=info-iso_7010] img[data-role=icon],div div[data-role=info-container] img[data-role=icon],section div[data-class=info-iso_7010] img[data-role=icon],section div[data-role=info-container] img[data-role=icon] {
+    margin: 0 .5rem;
+    display: inline!important;
+    vertical-align: bottom;
+    width: 1.5em;
+}
+
+div div[data-class=info-iso_7010] img[data-role=icon]~div,div div[data-class=info-iso_7010] img[data-role=icon]~div p,div div[data-role=info-container] img[data-role=icon]~div,div div[data-role=info-container] img[data-role=icon]~div p,section div[data-class=info-iso_7010] img[data-role=icon]~div,section div[data-class=info-iso_7010] img[data-role=icon]~div p,section div[data-role=info-container] img[data-role=icon]~div,section div[data-role=info-container] img[data-role=icon]~div p {
+    display: inline;
+    padding-left: 0!important
+} */
+
+div[data-class=info-container]>* {
+    display: inline-block; 
+    margin:0px;
+    padding: 0px;
+}
+/* 
+img.symbol,img[data-type=symbol] {
+    height: 1.5em!important
+} */
+
+span[data-type=pos-num] {
+    border: 1px solid #78FAAE!important;
+    color: #363636;
+    font-weight: 700;
+    padding: 2px 3px!important;
+    width: 1.6em;
+    height: 1.6em!important;
+    display: inline-block!important;
+    text-align: center!important
+}
+
+/* article,aside,details,figcaption,figure,footer,header,hgroup,main,menu,nav,section,summary {
+    display: block;
+    padding: 0px;
+    margin: 0px;
+    width: 100%;
+}
+
+dd, dt {
+    line-height: 1.42857143;
+} */
+
+img.content {
+    max-width: 100%
+}
+
+
+div.topic-content img[data-role=symbol], .tree_body div.topic-content img[data-role=symbol] {
+    margin-bottom: 0 !important;
+    vertical-align: middle;
+    height: 3em;
+    max-height: unset !important;
+    max-width: 2rem;
+}
+
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] {
+    /* border-top: 1px solid!important; */
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dd[data-class=vw-dl-head] p,div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt[data-class=vw-dl-head] {
+    font-weight: 700!important;
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt {
+    width: 7rem!important;
+    text-align: center
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dd {
+    vertical-align: top;
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dd[data-type=symbol-bedeutung] {
+    border-top: 1px solid;
+    margin-right: 0px;
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt:not([data-class=vw-dl-head]) {
+    background-color: transparent!important
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt:not([data-class=vw-dl-head]) img.icon[data-type=sym][data-role=symbol],div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt:not([data-class=vw-dl-head]) img.symbol[data-type=symbol][data-role=symbol] {
+    max-height: unset!important;
+    height: 3em!important;
+    max-width: 5rem;
+    max-width: -moz-available;
+    max-width: -webkit-fill-available;
+    padding-top: .5em!important;
+    padding-bottom: .5em!important
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt:not([data-class=vw-dl-head]):not(:empty) {
+    border-top: 1px solid!important;
+}
+
+div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dd p,div[data-role=list-container][data-class=vw-table-of-symbols][data-type=symbol-verzeichnis]>dl div[data-dl-wrapper=dli] dt p {
+    margin-bottom: 0!important;
+    padding-top: .57142857rem!important;
+    padding-bottom: .57142857rem!important;
+    padding-left: .57142857rem!important
+}
+
+div[data-role=list-container][data-class=vw-dl-short][data-type=def-liste] dl div[data-dl-wrapper=dli] dt {
+    width: 12rem!important;
+}
+
+dt[isDoubleIcon=true] {
+    width: 8rem!important
+}
+
+dl>div[data-dl-wrapper=dli] {
+    display: table-row
+}
+/* 
+dl>div[data-dl-wrapper=dli] dt {
+    width: 5rem;
+} */
+
+div[data-role=list-container][data-class=vw-icon-height-2][data-type=icon-block]>dl div[data-dl-wrapper=dli] dt[data-type=icon] {
+    width: 5rem;
+    text-align: center;
+    vertical-align: text-top
+}
+
+div[data-role=list-container][data-class=vw-icon-height-2][data-type=icon-block]>dl div[data-dl-wrapper=dli] dt[data-type=icon] img.icon {
+    max-height: unset;
+    max-width: 3rem
+}
+
+div[data-role=list-container][data-class*=vw-legend-toc][data-type=legende],div[data-role=list-container][data-class~=vw-legend][data-type=legende] {
+    padding-top: .4rem!important
+}
+
+div[data-role=list-container][data-class*=vw-legend-toc][data-type=legende] span[data-type=pos-num][hasimg=true],div[data-role=list-container][data-class~=vw-legend][data-type=legende] span[data-type=pos-num][hasimg=true] {
+    border: 0!important;
+    width: 100%;
+    padding-right: .5rem!important;
+    text-align: start!important
+}
+
+div[data-role=list-container][data-class*=vw-legend-toc][data-type=legende] span[data-type=pos-num][hasimg=true] img[data-role=symbol][data-type=symbol],div[data-role=list-container][data-class~=vw-legend][data-type=legende] span[data-type=pos-num][hasimg=true] img[data-role=symbol][data-type=symbol] {
+    max-width: 4rem;
+    max-width: -moz-available;
+    max-width: -webkit-fill-available
+}
+
+/* div[data-role=list-container][data-class*=vw-legend-toc][data-type=legende] div[data-dl-wrapper=dli] dt[data-type=legenden-punkt],div[data-role=list-container][data-class~=vw-legend][data-type=legende] div[data-dl-wrapper=dli] dt[data-type=legenden-punkt] {
+    width: 4rem
+} */
+
+div[data-role=list-container][data-class*=vw-legend-toc][data-type=legende] ul li[data-type=punkt] p[data-type="p"]::before,div[data-role=list-container][data-class~=vw-legend][data-type=legende] ul li[data-type=punkt] p[data-type="p"]::before {
+    content: "—"!important
+}
+
+dt[isDoubleIcon=true] {
+    width: 8rem!important
+}
+
+div[data-dl-wrapper=info-icon] {
+    display: none!important;
+}
+
+dt[data-type=legenden-punkt] span[data-type=pos-num] span[data-digitcount="1"] {
+    vertical-align: middle
+}
+
+dt[haseigenname=true] {
+    width: 5rem!important
+}
+
+section[data-role=glossary] dl {
+    width: inherit
+}
+
+details[data-dl-role=skill][open]>div[data-role*="-desc"],details[data-dl-role=tool][open]>div[data-role*="-desc"],details[data-dl-role=mat][open]>div[data-role*="-desc"],details[data-dl-role=gear][open]>div[data-role*="-desc"] {
+    border: 1px solid !important
+}
+
+#bodyAdmin table.table,table.table {
+    vertical-align: middle!important;
+    margin-bottom: 0!important
+}
+
+#bodyAdmin table.table p,table.table p {
+    margin: 0!important
+}
+
+#bodyAdmin table.table thead,table.table thead {
+    width: 100%!important;
+}
+
+#bodyAdmin table.table thead tr th,table.table thead tr th {
+    color: inherit!important
+}
+
+
+#bodyAdmin table.table tbody tr td,#bodyAdmin table.table tbody tr th,#bodyAdmin table.table tfoot tr td,#bodyAdmin table.table tfoot tr th,#bodyAdmin table.table thead tr td,#bodyAdmin table.table thead tr th,table.table tbody tr td,table.table tbody tr th,table.table tfoot tr td,table.table tfoot tr th,table.table thead tr td,table.table thead tr th {
+    padding: 20px!important;
+    border: none!important
+}
+
+#bodyAdmin table.table tbody tr td:first-child,#bodyAdmin table.table tbody tr th:first-child,#bodyAdmin table.table tfoot tr td:first-child,#bodyAdmin table.table tfoot tr th:first-child,#bodyAdmin table.table thead tr td:first-child,#bodyAdmin table.table thead tr th:first-child,table.table tbody tr td:first-child,table.table tbody tr th:first-child,table.table tfoot tr td:first-child,table.table tfoot tr th:first-child,table.table thead tr td:first-child,table.table thead tr th:first-child {
+    padding-left: 30px!important
+}
+
+.table-responsive {
+    margin-bottom: 20px!important
+}
+
+div.topic-content div[data-dl-wrapper=table],.tree_body div.topic-content div[data-dl-wrapper=table],body.topic-content div.topic-content div[data-dl-wrapper=table] {
+    overflow-x: auto;
+    margin-bottom: 15px
+}
+
+div.topic-content div[data-dl-wrapper=table]::-webkit-scrollbar,.tree_body div.topic-content div[data-dl-wrapper=table]::-webkit-scrollbar,body.topic-content div.topic-content div[data-dl-wrapper=table]::-webkit-scrollbar {
+    height: 7px
+}
+
+div.topic-content div[data-dl-wrapper=table]::-webkit-scrollbar-thumb,.tree_body div.topic-content div[data-dl-wrapper=table]::-webkit-scrollbar-thumb,body.topic-content div.topic-content div[data-dl-wrapper=table]::-webkit-scrollbar-thumb {
+    border-radius: 21px
+}
+
+div.topic-content div[data-dl-wrapper=table] table,.tree_body div.topic-content div[data-dl-wrapper=table] table,body.topic-content div.topic-content div[data-dl-wrapper=table] table {
+    min-width: 100%;
+    max-width: 100%;
+    width: 100%
+}
+
+div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table thead,.tree_body div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table thead,body.topic-content div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table thead {
+    border-top: 1px solid!important;
+    border-bottom: 2px solid!important
+}
+
+div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1],.tree_body div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1],body.topic-content div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] {
+    min-width: 10%!important;
+    padding-left: 0!important
+}
+
+div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] a[data-class=vw-link-short],.tree_body div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] a[data-class=vw-link-short],body.topic-content div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] a[data-class=vw-link-short] {
+    white-space: nowrap!important;
+    margin-bottom: 1.5rem!important
+}
+
+div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] img.symbol[data-type=symbol][data-role=symbol],div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-2] img.symbol[data-type=symbol][data-role=symbol],.tree_body div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] img.symbol[data-type=symbol][data-role=symbol],.tree_body div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-2] img.symbol[data-type=symbol][data-role=symbol],body.topic-content div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] img.symbol[data-type=symbol][data-role=symbol],body.topic-content div.topic-content div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-2] img.symbol[data-type=symbol][data-role=symbol] {
+    height: 2em!important;
+    max-height: unset!important;
+    margin-bottom: 0!important;
+    vertical-align: middle!important
+}
+
+div.topic-content section[data-type=topic-allgemein-k3] div[data-type=block-k3] div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1],.tree_body div.topic-content section[data-type=topic-allgemein-k3] div[data-type=block-k3] div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1],body.topic-content div.topic-content section[data-type=topic-allgemein-k3] div[data-type=block-k3] div[data-class*="vw-layout-wide vw-table-style-brand"][data-type=table] table td[data-class*=colnum-1] {
+    min-width: unset!important
+}
+
+table[data-role=troubleshooting] td[data-role=mno] {
+    width: 20%;
+    margin: 0;
+    float: left
+}
+
+
+table>thead>tr>th p,tfoot>tr>td p {
+    font-weight: bold!important
+}
+
+table[data-role=component-meta]>thead>tr>th>p,table[data-role=maintenance]>thead>tr>th>p,table[data-role=safety-category-list]>thead>tr>th>p,table[data-role=safety-phrase-list]>thead>tr>th>p,table[data-role=tec-data]>thead>tr>th>p,table[data-role=troubleshooting]>thead>tr>th>p {
+    font-weight: bold!important
+}
+
+/* div[data-class="vw-page-running vw-layout-wide vw-table-style-simple vw-keep-together-always"] tbody tr[data-type=tr] {
+    border-top: 1px solid;
+}
+
+div[data-class="vw-page-running vw-layout-narrow vw-table-style-simple vw-keep-together-always"] tbody tr[data-type=tr] {
+    border-top: 1px solid;
+}
+
+div[data-class="vw-page-running vw-layout-wide vw-table-style-simple"] tbody tr[data-type=tr] {
+    border-top: 1px solid;
+}
+
+/* 
+div[data-class="vw-table-style-simple"] tbody tr[data-type=tr] {
+    border-top: 1px solid;
+} */ 
+
+div[data-class*="vw-layout-narrow"][data-type=table] {
+    width: 50%;
+}
+
+div[data-class*="vw-table-style-simple"][data-type=table] table tbody td,div[data-class*="vw-table-style-simple"][data-type=table] table thead th {
+    border: 1px solid;
+    text-align: center;
+}
+
+/* div[data-class*="vw-table-style-simple"][data-type=table] table tbody td,div[data-class*="vw-table-style-simple"][data-type=table] table thead td {
+    border-top: 1px;
+    border-top-style: solid!important;
+    background-color: transparent!important;
+    border-bottom: 1px;
+    border-bottom-style: solid!important;
+    bol
+    text-align: center;
+} */
+
+td[data-class*=border-0-X-X-X][data-type=td] {
+    border-top: 0px!important;
+}
+
+
+td[data-class*=border-X-X-0-X][data-type=td] {
+    border-bottom: 0px!important;
+}
+
+
