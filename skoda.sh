@@ -145,7 +145,9 @@ function initSession() {
     CHECK=$(curl -s -b "${SESSION_JAR}" \
         -H 'Accept: application/json' \
         "https://digital-manual.skoda-auto.com/api/users/V1/getuser")
-    if ! echo "${CHECK}" | grep -q '"username":"Direct_PN"'; then
+    # VIN sessions get username=<VIN>, part-number sessions get username=Direct_PN —
+    # either way a valid session has anonymous:false
+    if ! echo "${CHECK}" | grep -q '"anonymous":false'; then
         >&2 echo "ERROR: Session invalid. Check that the VIN or part number is correct and belongs to a Škoda."
         exit 1
     fi
@@ -528,8 +530,8 @@ function interactiveMode() {
     echo "Step 1/3 — Language"
     echo ""
 
-    local -a LANG_CODES=("da_DK" "en_GB" "de_DE" "cs_CZ" "sk_SK" "fr_FR" "nl_NL" "pl_PL" "es_ES" "it_IT")
-    local -a LANG_NAMES=("Danish" "English (UK)" "German" "Czech" "Slovak" "French" "Dutch" "Polish" "Spanish" "Italian")
+    local -a LANG_CODES=("da_DK" "en_GB" "fi_FI" "de_DE" "cs_CZ" "sk_SK" "fr_FR" "nl_NL" "pl_PL" "es_ES" "it_IT")
+    local -a LANG_NAMES=("Danish" "English (UK)" "Finnish" "German" "Czech" "Slovak" "French" "Dutch" "Polish" "Spanish" "Italian")
     local n_langs=${#LANG_CODES[@]}
     local i
     for ((i=0; i<n_langs; i++)); do
@@ -669,7 +671,7 @@ fi
 
 # ─── Download content ─────────────────────────────────────────────────────────
 >&2 echo "Fetching table of contents: ${MANUAL} (${LANGUAGE})..."
-TOPIC_PATH=./cache/topic.json
+TOPIC_PATH=./cache/topic_${LANGUAGE}.json
 fetchFile "https://digital-manual.skoda-auto.com/api/web/V6/topic?key=${MANUAL}&displaytype=topic&language=${LANGUAGE}&query=undefined" "$TOPIC_PATH"
 
 MANUAL_LIST_PATH="./cache/manual_list_${LANGUAGE}.json"
@@ -680,7 +682,7 @@ fi
 
 grabImage "$(jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .previewImage" "$MANUAL_LIST_PATH")" "./images"
 
-TOC_PATH=./cache/toc.json
+TOC_PATH=./cache/toc_${LANGUAGE}.json
 if [ ! -s "$TOC_PATH" ]; then
     jq .trees "$TOPIC_PATH" > "$TOC_PATH"
 fi
@@ -691,7 +693,7 @@ TITLE=$(jq -r ".[0].label" "$TOC_PATH")
 >&2 echo "Manual: ${TITLE} — ${TOTAL_SECTIONS} sections"
 
 # ─── Output filenames ─────────────────────────────────────────────────────────
-MANUAL_NAME_RAW="$(jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .abstractText" "$MANUAL_LIST_PATH" | head -n 1)"
+MANUAL_NAME_RAW="$(jq -r ".results[] | select(.topicId==\"${MANUAL}\") | .abstractText" "$MANUAL_LIST_PATH" | sed 's|<br/*>| |g; s|<[^>]*>||g' | head -n 1)"
 if [ -z "$MANUAL_NAME_RAW" ] || [ "$MANUAL_NAME_RAW" = "null" ]; then
     MANUAL_NAME_RAW="$TITLE"
 fi

@@ -122,14 +122,15 @@ function Initialize-Session {
         }
     }
 
-    # Verify the session created a valid Direct_PN user
+    # Verify the session — VIN sessions get username=<VIN>, part-number
+    # sessions get username=Direct_PN; either way anonymous is false
     try {
         $check = Invoke-RestMethod `
             -Uri 'https://digital-manual.skoda-auto.com/api/users/V1/getuser' `
             -WebSession $script:Session `
             -Headers @{ Accept = 'application/json'; 'User-Agent' = $UA } `
             -UseBasicParsing
-        if ($check.username -ne 'Direct_PN') {
+        if ($check.anonymous -ne $false) {
             Write-Error "Session invalid. Check that the VIN or part number is correct and belongs to a Skoda."
             exit 1
         }
@@ -503,8 +504,8 @@ function Show-InteractiveMenu {
     Write-Host "Step 1/3 - Language" -ForegroundColor White
     Write-Host ""
 
-    $langCodes = @("da_DK","en_GB","de_DE","cs_CZ","sk_SK","fr_FR","nl_NL","pl_PL","es_ES","it_IT")
-    $langNames = @("Danish","English (UK)","German","Czech","Slovak","French","Dutch","Polish","Spanish","Italian")
+    $langCodes = @("da_DK","en_GB","fi_FI","de_DE","cs_CZ","sk_SK","fr_FR","nl_NL","pl_PL","es_ES","it_IT")
+    $langNames = @("Danish","English (UK)","Finnish","German","Czech","Slovak","French","Dutch","Polish","Spanish","Italian")
 
     for ($i = 0; $i -lt $langCodes.Count; $i++) {
         Write-Host ("  {0,2})  {1,-12}  {2}" -f ($i + 1), $langCodes[$i], $langNames[$i])
@@ -649,7 +650,7 @@ if (-not (Test-Path '.\bootstrap.css')) {
 
 # Fetch table of contents
 Write-Status "Fetching table of contents: $($script:Manual) ($($script:Language))..."
-$topicPath = '.\cache\topic.json'
+$topicPath = ".\cache\topic_$($script:Language).json"
 Invoke-FetchFile ("https://digital-manual.skoda-auto.com/api/web/V6/topic" +
     "?key=$($script:Manual)&displaytype=topic&language=$($script:Language)&query=undefined") $topicPath
 
@@ -677,6 +678,7 @@ Write-Status "Manual: $title — $($script:TotalSections) sections"
 # Output filenames
 $manualNameRaw = ($manualListData.results | Where-Object { $_.topicId -eq $script:Manual } |
     Select-Object -First 1).abstractText
+if ($manualNameRaw) { $manualNameRaw = $manualNameRaw -replace '<br\s*/?>', ' ' -replace '<[^>]*>', '' }
 if (-not $manualNameRaw) { $manualNameRaw = $title }
 if (-not $manualNameRaw) { $manualNameRaw = $script:Manual }
 
